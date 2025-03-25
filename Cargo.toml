@@ -6,3 +6,4 @@ license = "MIT OR Apache-2.0"
 description = "Placeholder for the test-dsl crate"
 
 [dependencies]
+kdl = "6.3.4"
