@@ -1,7 +1,8 @@
 use std::collections::HashMap;
+use std::marker::PhantomData;
 
 pub trait TestVerb<H>: 'static {
-    fn run(&self, harness: &H);
+    fn run(&self, harness: &H, arguments: &[kdl::KdlValue]);
     fn clone_box(&self) -> Box<dyn TestVerb<H>>;
 }
 
@@ -12,17 +13,85 @@ impl<H: 'static> Clone for Box<dyn TestVerb<H>> {
     }
 }
 
-impl<F, H: 'static> TestVerb<H> for F
+struct FunctionVerb<H, F, Args> {
+    func: F,
+    _pd: PhantomData<fn(H, Args)>,
+}
+
+impl<H, F: Clone, Args> Clone for FunctionVerb<H, F, Args> {
+    fn clone(&self) -> Self {
+        Self {
+            func: self.func.clone(),
+            _pd: self._pd,
+        }
+    }
+}
+
+impl<H, F> From<F> for FunctionVerb<H, F, ()>
+where
+    F: Fn(&H),
+{
+    fn from(value: F) -> Self {
+        FunctionVerb {
+            func: value,
+            _pd: PhantomData,
+        }
+    }
+}
+
+impl<H, F> From<F> for FunctionVerb<H, F, (usize,)>
+where
+    F: Fn(&H, usize),
+{
+    fn from(value: F) -> Self {
+        FunctionVerb {
+            func: value,
+            _pd: PhantomData,
+        }
+    }
+}
+
+impl<F, H: 'static> TestVerb<H> for FunctionVerb<H, F, ()>
 where
     F: Fn(&H) + 'static,
     F: Clone,
 {
-    fn run(&self, harness: &H) {
-        (self)(harness)
+    fn run(&self, harness: &H, _arguments: &[kdl::KdlValue]) {
+        (self.func)(harness)
     }
 
     fn clone_box(&self) -> Box<dyn TestVerb<H>> {
         Box::new(self.clone())
+    }
+}
+
+impl<F, H: 'static> TestVerb<H> for FunctionVerb<H, F, (usize,)>
+where
+    F: Fn(&H, usize) + 'static,
+    F: Clone,
+{
+    fn run(&self, harness: &H, arguments: &[kdl::KdlValue]) {
+        (self.func)(harness, VerbArgument::from_value(&arguments[0]).unwrap())
+    }
+
+    fn clone_box(&self) -> Box<dyn TestVerb<H>> {
+        Box::new(self.clone())
+    }
+}
+
+pub trait VerbArgument: Sized {
+    fn from_value(value: &kdl::KdlValue) -> Option<Self>;
+}
+
+impl VerbArgument for String {
+    fn from_value(value: &kdl::KdlValue) -> Option<Self> {
+        value.as_string().map(ToOwned::to_owned)
+    }
+}
+
+impl VerbArgument for usize {
+    fn from_value(value: &kdl::KdlValue) -> Option<Self> {
+        value.as_integer().map(|i| i as usize)
     }
 }
 
@@ -96,8 +165,9 @@ impl<H: 'static> TestDsl<H> {
             }
             name => {
                 let verb = self.verbs.get(name).unwrap().clone();
+                let params = verb_node.iter().map(|e| e.value().clone()).collect();
 
-                Box::new(Identity { verb })
+                Box::new(Identity { verb, params })
             }
         }
     }
@@ -109,7 +179,7 @@ struct Repeat<H> {
 }
 
 impl<H: 'static> TestVerbCreator<H> for Repeat<H> {
-    fn get_test_verbs(&self) -> Box<dyn Iterator<Item = Box<dyn TestVerb<H>>> + '_> {
+    fn get_test_verbs(&self) -> Box<dyn Iterator<Item = TestVerbInstance<'_, H>> + '_> {
         Box::new(
             std::iter::repeat_with(|| self.block.iter().flat_map(|c| c.get_test_verbs()))
                 .take(self.times)
@@ -120,16 +190,31 @@ impl<H: 'static> TestVerbCreator<H> for Repeat<H> {
 
 struct Identity<H> {
     verb: Box<dyn TestVerb<H>>,
+    params: Vec<kdl::KdlValue>,
 }
 
 impl<H: 'static> TestVerbCreator<H> for Identity<H> {
-    fn get_test_verbs(&self) -> Box<dyn Iterator<Item = Box<dyn TestVerb<H>>>> {
-        Box::new(std::iter::once(self.verb.clone()))
+    fn get_test_verbs(&self) -> Box<dyn Iterator<Item = TestVerbInstance<'_, H>> + '_> {
+        Box::new(std::iter::once(TestVerbInstance {
+            verb: self.verb.clone(),
+            params: &self.params,
+        }))
+    }
+}
+
+struct TestVerbInstance<'p, H> {
+    verb: Box<dyn TestVerb<H>>,
+    params: &'p [kdl::KdlValue],
+}
+
+impl<H: 'static> TestVerbInstance<'_, H> {
+    fn run(&self, harness: &H) {
+        self.verb.run(harness, self.params);
     }
 }
 
 trait TestVerbCreator<H> {
-    fn get_test_verbs(&self) -> Box<dyn Iterator<Item = Box<dyn TestVerb<H>>> + '_>;
+    fn get_test_verbs(&self) -> Box<dyn Iterator<Item = TestVerbInstance<'_, H>> + '_>;
 }
 
 pub struct TestCase<H> {
@@ -160,6 +245,7 @@ impl<H: 'static> TestCase<H> {
 mod tests {
     use std::sync::atomic::AtomicUsize;
 
+    use crate::FunctionVerb;
     use crate::TestDsl;
 
     struct ArithmeticHarness {
@@ -169,15 +255,21 @@ mod tests {
     #[test]
     fn simple_test() {
         let mut ts = TestDsl::<ArithmeticHarness>::new();
-        ts.add_verb("add_one", |ah: &ArithmeticHarness| {
-            ah.value.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        });
+        ts.add_verb(
+            "add_one",
+            FunctionVerb::from(|ah: &ArithmeticHarness| {
+                ah.value.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            }),
+        );
 
-        ts.add_verb("mul_two", |ah: &ArithmeticHarness| {
-            let value = ah.value.load(std::sync::atomic::Ordering::SeqCst);
-            ah.value
-                .store(value * 2, std::sync::atomic::Ordering::SeqCst);
-        });
+        ts.add_verb(
+            "mul_two",
+            FunctionVerb::from(|ah: &ArithmeticHarness| {
+                let value = ah.value.load(std::sync::atomic::Ordering::SeqCst);
+                ah.value
+                    .store(value * 2, std::sync::atomic::Ordering::SeqCst);
+            }),
+        );
 
         let tc = ts
             .parse_document(
@@ -203,15 +295,21 @@ mod tests {
     #[test]
     fn repeat_test() {
         let mut ts = TestDsl::<ArithmeticHarness>::new();
-        ts.add_verb("add_one", |ah: &ArithmeticHarness| {
-            ah.value.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        });
+        ts.add_verb(
+            "add_one",
+            FunctionVerb::from(|ah: &ArithmeticHarness| {
+                ah.value.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            }),
+        );
 
-        ts.add_verb("mul_two", |ah: &ArithmeticHarness| {
-            let value = ah.value.load(std::sync::atomic::Ordering::SeqCst);
-            ah.value
-                .store(value * 2, std::sync::atomic::Ordering::SeqCst);
-        });
+        ts.add_verb(
+            "mul_two",
+            FunctionVerb::from(|ah: &ArithmeticHarness| {
+                let value = ah.value.load(std::sync::atomic::Ordering::SeqCst);
+                ah.value
+                    .store(value * 2, std::sync::atomic::Ordering::SeqCst);
+            }),
+        );
 
         let tc = ts
             .parse_document(
@@ -235,5 +333,61 @@ mod tests {
         tc[0].run(&ah);
 
         assert_eq!(ah.value.load(std::sync::atomic::Ordering::SeqCst), 30);
+    }
+
+    #[test]
+    fn check_arguments_work() {
+        let mut ts = TestDsl::<ArithmeticHarness>::new();
+        ts.add_verb(
+            "add_one",
+            FunctionVerb::from(|ah: &ArithmeticHarness| {
+                ah.value.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            }),
+        );
+
+        ts.add_verb(
+            "add",
+            FunctionVerb::from(|ah: &ArithmeticHarness, num: usize| {
+                ah.value.fetch_add(num, std::sync::atomic::Ordering::SeqCst);
+            }),
+        );
+
+        ts.add_verb(
+            "mul_two",
+            FunctionVerb::from(|ah: &ArithmeticHarness| {
+                let value = ah.value.load(std::sync::atomic::Ordering::SeqCst);
+                ah.value
+                    .store(value * 2, std::sync::atomic::Ordering::SeqCst);
+            }),
+        );
+
+        let tc = ts
+            .parse_document(
+                r#"
+            testcase {
+                repeat 2 {
+                    repeat 2 {
+                        add 2
+                        mul_two
+                    }
+                }
+
+                permutate {
+                    foo
+                    bar
+                    baz
+                }
+            }
+            "#,
+            )
+            .unwrap();
+
+        let ah = ArithmeticHarness {
+            value: AtomicUsize::new(0),
+        };
+
+        tc[0].run(&ah);
+
+        assert_eq!(ah.value.load(std::sync::atomic::Ordering::SeqCst), 60);
     }
 }
