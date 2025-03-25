@@ -1,0 +1,8 @@
+[package]
+name = "test-dsl"
+version = "0.0.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Placeholder for the test-dsl crate"
+
+[dependencies]
