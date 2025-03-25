@@ -162,6 +162,7 @@ name = "test-dsl"
 version = "0.1.0"
 dependencies = [
  "kdl",
+ "miette",
 ]
 
 [[package]]

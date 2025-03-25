@@ -16,6 +16,9 @@ testcase "Check for invalid output" {
     wait_until_true {
 
     }
+    repeat 10 {
+        send_messages "Hello"
+    }
 }
 ```
 
@@ -29,6 +32,10 @@ dsl.register_verb("connect_to_server", |id: usize| {
 dsl.register_verb("send_message", |msg: String| {
     // Send to server!?
 });
+
+dsl.register_verb("repeat", meta_verb(|args, nodes| {
+
+}));
 
 dsl.register_condition("received_message", |mode: WaitingMode, msg: String| {
     if mode == WaitingMode::Wait {
