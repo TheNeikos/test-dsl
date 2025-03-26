@@ -1,11 +1,18 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
+use std::sync::Arc;
 
 use miette::Diagnostic;
+use miette::NamedSource;
 use thiserror::Error;
 
 pub trait TestVerb<H>: 'static {
-    fn run(&self, harness: &H, arguments: &[kdl::KdlValue]);
+    fn run(
+        &self,
+        harness: &H,
+        node: &kdl::KdlNode,
+        arguments: &[kdl::KdlEntry],
+    ) -> Result<TestRunResult, TestParseError>;
     fn clone_box(&self) -> Box<dyn TestVerb<H>>;
 }
 
@@ -16,7 +23,7 @@ impl<H: 'static> Clone for Box<dyn TestVerb<H>> {
     }
 }
 
-struct FunctionVerb<H, F, Args> {
+pub struct FunctionVerb<H, F, Args> {
     func: F,
     _pd: PhantomData<fn(H, Args)>,
 }
@@ -59,8 +66,15 @@ where
     F: Fn(&H) + 'static,
     F: Clone,
 {
-    fn run(&self, harness: &H, _arguments: &[kdl::KdlValue]) {
-        (self.func)(harness)
+    fn run(
+        &self,
+        harness: &H,
+        _node: &kdl::KdlNode,
+        _arguments: &[kdl::KdlEntry],
+    ) -> Result<TestRunResult, TestParseError> {
+        (self.func)(harness);
+
+        Ok(TestRunResult::Ok)
     }
 
     fn clone_box(&self) -> Box<dyn TestVerb<H>> {
@@ -73,8 +87,29 @@ where
     F: Fn(&H, usize) + 'static,
     F: Clone,
 {
-    fn run(&self, harness: &H, arguments: &[kdl::KdlValue]) {
-        (self.func)(harness, VerbArgument::from_value(&arguments[0]).unwrap())
+    fn run(
+        &self,
+        harness: &H,
+        node: &kdl::KdlNode,
+        arguments: &[kdl::KdlEntry],
+    ) -> Result<TestRunResult, TestParseError> {
+        let arg = arguments
+            .first()
+            .ok_or_else(|| TestParseErrorCase::MissingArgument {
+                parent: node.name().span(),
+                missing: String::from("This node requires an integer argument"),
+            })?;
+
+        let arg: usize =
+            VerbArgument::from_value(arg).ok_or_else(|| TestParseErrorCase::WrongArgumentType {
+                parent: node.name().span(),
+                argument: arg.span(),
+                expected: String::from("Expected an integer"),
+            })?;
+
+        (self.func)(harness, arg);
+
+        Ok(TestRunResult::Ok)
     }
 
     fn clone_box(&self) -> Box<dyn TestVerb<H>> {
@@ -83,18 +118,18 @@ where
 }
 
 pub trait VerbArgument: Sized {
-    fn from_value(value: &kdl::KdlValue) -> Option<Self>;
+    fn from_value(value: &kdl::KdlEntry) -> Option<Self>;
 }
 
 impl VerbArgument for String {
-    fn from_value(value: &kdl::KdlValue) -> Option<Self> {
-        value.as_string().map(ToOwned::to_owned)
+    fn from_value(value: &kdl::KdlEntry) -> Option<Self> {
+        value.value().as_string().map(ToOwned::to_owned)
     }
 }
 
 impl VerbArgument for usize {
-    fn from_value(value: &kdl::KdlValue) -> Option<Self> {
-        value.as_integer().map(|i| i as usize)
+    fn from_value(value: &kdl::KdlEntry) -> Option<Self> {
+        value.value().as_integer().map(|i| i as usize)
     }
 }
 
@@ -124,13 +159,22 @@ pub struct TestParseError {
     errors: Vec<TestParseErrorCase>,
 
     #[source_code]
-    source_code: Option<String>,
+    source_code: Option<miette::NamedSource<Arc<str>>>,
 }
 
 impl From<kdl::KdlError> for TestParseError {
     fn from(source: kdl::KdlError) -> Self {
         TestParseError {
             errors: vec![TestParseErrorCase::Kdl { source }],
+            source_code: None,
+        }
+    }
+}
+
+impl From<TestParseErrorCase> for TestParseError {
+    fn from(source: TestParseErrorCase) -> Self {
+        TestParseError {
+            errors: vec![source],
             source_code: None,
         }
     }
@@ -175,6 +219,23 @@ enum TestParseErrorCase {
     },
 }
 
+pub enum TestRunResult {
+    Ok,
+    Error(TestRunResultError),
+}
+
+#[derive(Error, Diagnostic, Debug)]
+pub enum TestRunResultError {
+    #[error("A panic occurred while running a test")]
+    Panic {},
+
+    #[error("An error occurred while running a test")]
+    Error {
+        #[diagnostic(transparent)]
+        error: miette::Error,
+    },
+}
+
 impl<H: 'static> TestDsl<H> {
     pub fn new() -> Self {
         TestDsl {
@@ -196,8 +257,11 @@ impl<H: 'static> TestDsl<H> {
         assert!(existing.is_none());
     }
 
-    pub fn parse_document(&self, input: &str) -> Result<Vec<TestCase<H>>, TestParseError> {
-        let document = kdl::KdlDocument::parse(input)?;
+    pub fn parse_document(
+        &self,
+        input: miette::NamedSource<Arc<str>>,
+    ) -> Result<Vec<TestCase<H>>, TestParseError> {
+        let document = kdl::KdlDocument::parse(input.inner())?;
 
         let mut cases = vec![];
 
@@ -212,7 +276,7 @@ impl<H: 'static> TestDsl<H> {
                 continue;
             }
 
-            let mut testcase = TestCase::new();
+            let mut testcase = TestCase::new(input.clone());
 
             for verb_node in testcase_node.iter_children() {
                 match self.parse_node(verb_node) {
@@ -227,7 +291,7 @@ impl<H: 'static> TestDsl<H> {
         if !errors.is_empty() {
             return Err(TestParseError {
                 errors,
-                source_code: Some(input.to_string()),
+                source_code: Some(input.clone()),
             });
         }
 
@@ -274,9 +338,13 @@ impl<H: 'static> TestDsl<H> {
                         verb: verb_node.name().span(),
                     })?
                     .clone();
-                let params = verb_node.iter().map(|e| e.value().clone()).collect();
+                let params = verb_node.iter().cloned().collect();
 
-                Ok(Box::new(Identity { verb, params }))
+                Ok(Box::new(Identity {
+                    verb,
+                    node: verb_node.clone(),
+                    params,
+                }))
             }
         }
     }
@@ -309,13 +377,15 @@ impl<H: 'static> TestVerbCreator<H> for Repeat<H> {
 
 struct Identity<H> {
     verb: Box<dyn TestVerb<H>>,
-    params: Vec<kdl::KdlValue>,
+    node: kdl::KdlNode,
+    params: Vec<kdl::KdlEntry>,
 }
 
 impl<H: 'static> TestVerbCreator<H> for Identity<H> {
     fn get_test_verbs(&self) -> Box<dyn Iterator<Item = TestVerbInstance<'_, H>> + '_> {
         Box::new(std::iter::once(TestVerbInstance {
             verb: self.verb.clone(),
+            node: &self.node,
             params: &self.params,
         }))
     }
@@ -323,12 +393,13 @@ impl<H: 'static> TestVerbCreator<H> for Identity<H> {
 
 struct TestVerbInstance<'p, H> {
     verb: Box<dyn TestVerb<H>>,
-    params: &'p [kdl::KdlValue],
+    node: &'p kdl::KdlNode,
+    params: &'p [kdl::KdlEntry],
 }
 
 impl<H: 'static> TestVerbInstance<'_, H> {
-    fn run(&self, harness: &H) {
-        self.verb.run(harness, self.params);
+    fn run(&self, harness: &H) -> Result<TestRunResult, TestParseError> {
+        self.verb.run(harness, self.node, self.params)
     }
 }
 
@@ -338,6 +409,7 @@ trait TestVerbCreator<H> {
 
 pub struct TestCase<H> {
     creators: Vec<Box<dyn TestVerbCreator<H>>>,
+    source_code: NamedSource<Arc<str>>,
 }
 
 impl<H> std::fmt::Debug for TestCase<H> {
@@ -346,29 +418,69 @@ impl<H> std::fmt::Debug for TestCase<H> {
     }
 }
 
-impl<H: 'static> Default for TestCase<H> {
-    fn default() -> Self {
-        Self::new()
-    }
+#[derive(Error, Diagnostic, Debug)]
+#[error("The testcase returned an error")]
+pub struct TestCaseError {
+    #[related]
+    errors: Vec<TestCaseErrorCase>,
+
+    #[source_code]
+    source_code: miette::NamedSource<Arc<str>>,
+}
+
+#[derive(Error, Diagnostic, Debug)]
+enum TestCaseErrorCase {
+    #[error("Did not run succesfully")]
+    Run {
+        #[diagnostic(transparent)]
+        error: TestRunResultError,
+    },
+    #[error(transparent)]
+    #[diagnostic(transparent)]
+    Parse { error: TestParseError },
 }
 
 impl<H: 'static> TestCase<H> {
-    pub fn new() -> Self {
-        TestCase { creators: vec![] }
+    pub fn new(source_code: miette::NamedSource<Arc<str>>) -> Self {
+        TestCase {
+            creators: vec![],
+            source_code,
+        }
     }
 
-    pub fn run(&self, harness: &H) {
+    pub fn run(&self, harness: &H) -> Result<(), TestCaseError> {
+        let mut errors = vec![];
         for c in &self.creators {
             for verb in c.get_test_verbs() {
-                verb.run(harness);
+                match verb.run(harness) {
+                    Ok(TestRunResult::Ok) => {}
+                    Ok(TestRunResult::Error(error)) => {
+                        errors.push(TestCaseErrorCase::Run { error });
+                    }
+                    Err(error) => {
+                        errors.push(TestCaseErrorCase::Parse { error });
+                    }
+                }
             }
         }
+
+        if !errors.is_empty() {
+            return Err(TestCaseError {
+                errors,
+                source_code: self.source_code.clone(),
+            });
+        }
+
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
     use std::sync::atomic::AtomicUsize;
+
+    use miette::NamedSource;
 
     use crate::FunctionVerb;
     use crate::TestDsl;
@@ -397,22 +509,25 @@ mod tests {
         );
 
         let tc = ts
-            .parse_document(
-                r#"
+            .parse_document(NamedSource::new(
+                "test.kdl",
+                Arc::from(
+                    r#"
             testcase {
                 add_one
                 add_one
                 mul_two
             }
             "#,
-            )
+                ),
+            ))
             .unwrap();
 
         let ah = ArithmeticHarness {
             value: AtomicUsize::new(0),
         };
 
-        tc[0].run(&ah);
+        tc[0].run(&ah).unwrap();
 
         assert_eq!(ah.value.load(std::sync::atomic::Ordering::SeqCst), 4);
     }
@@ -437,8 +552,10 @@ mod tests {
         );
 
         let tc = ts
-            .parse_document(
-                r#"
+            .parse_document(NamedSource::new(
+                "test.kdl",
+                Arc::from(
+                    r#"
             testcase {
                 repeat 2 {
                     repeat 2 {
@@ -448,14 +565,15 @@ mod tests {
                 }
             }
             "#,
-            )
+                ),
+            ))
             .unwrap();
 
         let ah = ArithmeticHarness {
             value: AtomicUsize::new(0),
         };
 
-        tc[0].run(&ah);
+        tc[0].run(&ah).unwrap();
 
         assert_eq!(ah.value.load(std::sync::atomic::Ordering::SeqCst), 30);
     }
@@ -487,8 +605,10 @@ mod tests {
         );
 
         let tc = ts
-            .parse_document(
-                r#"
+            .parse_document(NamedSource::new(
+                "test.kdl",
+                Arc::from(
+                    r#"
             testcase {
                 repeat 2 {
                     repeat 2 {
@@ -500,14 +620,15 @@ mod tests {
                 }
             }
             "#,
-            )
+                ),
+            ))
             .unwrap();
 
         let ah = ArithmeticHarness {
             value: AtomicUsize::new(0),
         };
 
-        tc[0].run(&ah);
+        tc[0].run(&ah).unwrap();
 
         assert_eq!(ah.value.load(std::sync::atomic::Ordering::SeqCst), 60);
     }
