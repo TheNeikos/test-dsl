@@ -126,3 +126,28 @@ fn check_argument_wrong_type_verb() {
 
     insta::assert_snapshot!(format!("{:?}", miette::Error::new(tc.unwrap_err())));
 }
+
+#[test]
+fn check_verb_panic_fail() {
+    let mut ts = test_dsl::TestDsl::<()>::new();
+
+    ts.add_verb("foobar", FunctionVerb::from(|_: &(), _: usize| panic!()));
+
+    let tc = ts
+        .parse_document(NamedSource::new(
+            "test.kdl",
+            Arc::from(
+                r#"
+            testcase {
+                foobar 2 {
+                    ofoo
+                }
+            }
+        "#,
+            ),
+        ))
+        .unwrap()[0]
+        .run(&());
+
+    insta::assert_snapshot!(format!("{:?}", miette::Error::new(tc.unwrap_err())));
+}

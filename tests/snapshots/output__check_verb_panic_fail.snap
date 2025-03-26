@@ -1,0 +1,17 @@
+---
+source: tests/output.rs
+expression: "format!(\"{:?}\", miette::Error::new(tc.unwrap_err()))"
+---
+  [31m×[0m Testcase did not run successfully
+[31m  ├─▶ [0m  [31m×[0m Failed while running
+[31m  │   [0m   ╭─[[36;1;4mtest.kdl:3:17[0m]
+[31m  │   [0m [2m2[0m │                 testcase {
+[31m  │   [0m [2m3[0m │ [35;1m╭[0m[35;1m─[0m[35;1m▶[0m                 foobar 2 {
+[31m  │   [0m [2m4[0m │ [35;1m│[0m                       ofoo
+[31m  │   [0m [2m5[0m │ [35;1m├[0m[35;1m─[0m[35;1m▶[0m                 }
+[31m  │   [0m   · [35;1m╰[0m[35;1m───[0m[35;1m─[0m [35;1min this node[0m
+[31m  │   [0m [2m6[0m │                 }
+[31m  │   [0m   ╰────
+[31m  │   [0m
+[31m  ╰─▶ [0m  [31m×[0m explicit panic
+[31m      [0m

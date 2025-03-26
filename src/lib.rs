@@ -69,12 +69,34 @@ where
     fn run(
         &self,
         harness: &H,
-        _node: &kdl::KdlNode,
+        node: &kdl::KdlNode,
         _arguments: &[kdl::KdlEntry],
     ) -> Result<TestRunResult, TestParseError> {
-        (self.func)(harness);
+        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            (self.func)(harness);
+        }));
 
-        Ok(TestRunResult::Ok)
+        match res {
+            Ok(()) => Ok(TestRunResult::Ok),
+            Err(error) => {
+                let mut message = "Something went wrong".to_string();
+
+                let payload = error;
+
+                if let Some(msg) = payload.downcast_ref::<&str>() {
+                    message = msg.to_string();
+                }
+
+                if let Some(msg) = payload.downcast_ref::<String>() {
+                    message.clone_from(msg);
+                }
+
+                Ok(TestRunResult::Error(TestRunResultError::Panic {
+                    error: miette::Error::msg(message),
+                    label: node.span(),
+                }))
+            }
+        }
     }
 
     fn clone_box(&self) -> Box<dyn TestVerb<H>> {
@@ -107,9 +129,31 @@ where
                 expected: String::from("Expected an integer"),
             })?;
 
-        (self.func)(harness, arg);
+        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            (self.func)(harness, arg);
+        }));
 
-        Ok(TestRunResult::Ok)
+        match res {
+            Ok(()) => Ok(TestRunResult::Ok),
+            Err(error) => {
+                let mut message = "Something went wrong".to_string();
+
+                let payload = error;
+
+                if let Some(msg) = payload.downcast_ref::<&str>() {
+                    message = msg.to_string();
+                }
+
+                if let Some(msg) = payload.downcast_ref::<String>() {
+                    message.clone_from(msg);
+                }
+
+                Ok(TestRunResult::Error(TestRunResultError::Panic {
+                    error: miette::Error::msg(message),
+                    label: node.span(),
+                }))
+            }
+        }
     }
 
     fn clone_box(&self) -> Box<dyn TestVerb<H>> {
@@ -225,14 +269,22 @@ pub enum TestRunResult {
 }
 
 #[derive(Error, Diagnostic, Debug)]
+#[error("An error occurred while running the test")]
 pub enum TestRunResultError {
-    #[error("A panic occurred while running a test")]
-    Panic {},
-
-    #[error("An error occurred while running a test")]
-    Error {
-        #[diagnostic(transparent)]
+    Panic {
+        #[diagnostic_source]
         error: miette::Error,
+
+        #[label("in this node")]
+        label: miette::SourceSpan,
+    },
+
+    Error {
+        #[diagnostic_source]
+        error: miette::Error,
+
+        #[label("in this node")]
+        label: miette::SourceSpan,
     },
 }
 
@@ -419,10 +471,10 @@ impl<H> std::fmt::Debug for TestCase<H> {
 }
 
 #[derive(Error, Diagnostic, Debug)]
-#[error("The testcase returned an error")]
+#[error("Testcase did not run successfully")]
 pub struct TestCaseError {
-    #[related]
-    errors: Vec<TestCaseErrorCase>,
+    #[diagnostic_source]
+    error: TestCaseErrorCase,
 
     #[source_code]
     source_code: miette::NamedSource<Arc<str>>,
@@ -430,13 +482,11 @@ pub struct TestCaseError {
 
 #[derive(Error, Diagnostic, Debug)]
 enum TestCaseErrorCase {
-    #[error("Did not run succesfully")]
-    Run {
-        #[diagnostic(transparent)]
-        error: TestRunResultError,
-    },
-    #[error(transparent)]
     #[diagnostic(transparent)]
+    #[error("Failed while running")]
+    Run { error: TestRunResultError },
+    #[diagnostic(transparent)]
+    #[error("Failed while parsing")]
     Parse { error: TestParseError },
 }
 
@@ -449,29 +499,20 @@ impl<H: 'static> TestCase<H> {
     }
 
     pub fn run(&self, harness: &H) -> Result<(), TestCaseError> {
-        let mut errors = vec![];
-        for c in &self.creators {
-            for verb in c.get_test_verbs() {
-                match verb.run(harness) {
-                    Ok(TestRunResult::Ok) => {}
-                    Ok(TestRunResult::Error(error)) => {
-                        errors.push(TestCaseErrorCase::Run { error });
-                    }
-                    Err(error) => {
-                        errors.push(TestCaseErrorCase::Parse { error });
-                    }
-                }
-            }
-        }
-
-        if !errors.is_empty() {
-            return Err(TestCaseError {
-                errors,
+        self.creators
+            .iter()
+            .flat_map(|c| {
+                c.get_test_verbs().map(|verb| match verb.run(harness) {
+                    Ok(TestRunResult::Ok) => Ok(()),
+                    Ok(TestRunResult::Error(error)) => Err(TestCaseErrorCase::Run { error }),
+                    Err(error) => Err(TestCaseErrorCase::Parse { error }),
+                })
+            })
+            .collect::<Result<(), _>>()
+            .map_err(|error| TestCaseError {
+                error,
                 source_code: self.source_code.clone(),
-            });
-        }
-
-        Ok(())
+            })
     }
 }
 
