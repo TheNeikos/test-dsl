@@ -122,12 +122,16 @@ impl<H: 'static> Default for TestDsl<H> {
 pub struct TestParseError {
     #[related]
     errors: Vec<TestParseErrorCase>,
+
+    #[source_code]
+    source_code: Option<String>,
 }
 
 impl From<kdl::KdlError> for TestParseError {
     fn from(source: kdl::KdlError) -> Self {
         TestParseError {
             errors: vec![TestParseErrorCase::Kdl { source }],
+            source_code: None,
         }
     }
 }
@@ -144,9 +148,30 @@ enum TestParseErrorCase {
     NotTestcase {
         #[label("Expected a `testcase`")]
         span: miette::SourceSpan,
+    },
+    #[error("An argument was missing")]
+    MissingArgument {
+        #[label("This node is missing an argument")]
+        parent: miette::SourceSpan,
 
-        #[source_code]
-        source_code: String,
+        #[help]
+        missing: String,
+    },
+    #[error("An argument was of the wrong type")]
+    WrongArgumentType {
+        #[label("This node has an argument of a wrong kind")]
+        parent: miette::SourceSpan,
+
+        #[label("this one")]
+        argument: miette::SourceSpan,
+
+        #[help]
+        expected: String,
+    },
+    #[error("Could not find verb with this name")]
+    UnknownVerb {
+        #[label]
+        verb: miette::SourceSpan,
     },
 }
 
@@ -182,7 +207,6 @@ impl<H: 'static> TestDsl<H> {
             if testcase_node.name().value() != "testcase" {
                 errors.push(TestParseErrorCase::NotTestcase {
                     span: testcase_node.name().span(),
-                    source_code: input.to_string(),
                 });
 
                 continue;
@@ -191,42 +215,68 @@ impl<H: 'static> TestDsl<H> {
             let mut testcase = TestCase::new();
 
             for verb_node in testcase_node.iter_children() {
-                testcase.creators.push(self.parse_node(verb_node));
+                match self.parse_node(verb_node) {
+                    Ok(verb) => testcase.creators.push(verb),
+                    Err(e) => errors.push(e),
+                }
             }
 
             cases.push(testcase);
         }
 
         if !errors.is_empty() {
-            return Err(TestParseError { errors });
+            return Err(TestParseError {
+                errors,
+                source_code: Some(input.to_string()),
+            });
         }
 
         Ok(cases)
     }
 
-    fn parse_node(&self, verb_node: &kdl::KdlNode) -> Box<dyn TestVerbCreator<H>> {
+    fn parse_node(
+        &self,
+        verb_node: &kdl::KdlNode,
+    ) -> Result<Box<dyn TestVerbCreator<H>>, TestParseErrorCase> {
         match verb_node.name().value() {
             "repeat" => {
-                let times = verb_node.get(0).unwrap().as_integer().unwrap() as usize;
+                let times = verb_node
+                    .get(0)
+                    .ok_or_else(|| TestParseErrorCase::MissingArgument {
+                        parent: verb_node.name().span(),
+                        missing: String::from("`repeat` takes one argument, the repetition count"),
+                    })?
+                    .as_integer()
+                    .ok_or_else(|| TestParseErrorCase::WrongArgumentType {
+                        parent: verb_node.name().span(),
+                        argument: verb_node.iter().next().unwrap().span(),
+                        expected: String::from("Expected an integer"),
+                    })? as usize;
 
                 let block = verb_node
                     .iter_children()
                     .map(|node| self.parse_node(node))
-                    .collect();
+                    .collect::<Result<_, _>>()?;
 
-                Box::new(Repeat { times, block })
+                Ok(Box::new(Repeat { times, block }))
             }
-            "group" => Box::new(Group {
+            "group" => Ok(Box::new(Group {
                 block: verb_node
                     .iter_children()
                     .map(|n| self.parse_node(n))
-                    .collect(),
-            }),
+                    .collect::<Result<_, _>>()?,
+            })),
             name => {
-                let verb = self.verbs.get(name).unwrap().clone();
+                let verb = self
+                    .verbs
+                    .get(name)
+                    .ok_or_else(|| TestParseErrorCase::UnknownVerb {
+                        verb: verb_node.name().span(),
+                    })?
+                    .clone();
                 let params = verb_node.iter().map(|e| e.value().clone()).collect();
 
-                Box::new(Identity { verb, params })
+                Ok(Box::new(Identity { verb, params }))
             }
         }
     }
