@@ -163,6 +163,12 @@ impl<H: 'static> TestDsl<H> {
 
                 Box::new(Repeat { times, block })
             }
+            "group" => Box::new(Group {
+                block: verb_node
+                    .iter_children()
+                    .map(|n| self.parse_node(n))
+                    .collect(),
+            }),
             name => {
                 let verb = self.verbs.get(name).unwrap().clone();
                 let params = verb_node.iter().map(|e| e.value().clone()).collect();
@@ -170,6 +176,16 @@ impl<H: 'static> TestDsl<H> {
                 Box::new(Identity { verb, params })
             }
         }
+    }
+}
+
+struct Group<H> {
+    block: Vec<Box<dyn TestVerbCreator<H>>>,
+}
+
+impl<H: 'static> TestVerbCreator<H> for Group<H> {
+    fn get_test_verbs(&self) -> Box<dyn Iterator<Item = TestVerbInstance<'_, H>> + '_> {
+        Box::new(self.block.iter().flat_map(|c| c.get_test_verbs()))
     }
 }
 
@@ -367,15 +383,11 @@ mod tests {
             testcase {
                 repeat 2 {
                     repeat 2 {
-                        add 2
-                        mul_two
+                        group {
+                            add 2
+                            mul_two
+                        }
                     }
-                }
-
-                permutate {
-                    foo
-                    bar
-                    baz
                 }
             }
             "#,
