@@ -91,6 +91,7 @@
             rustfmt'
             rustTarget
 
+            pkgs.cargo-insta
             inputs.cargo-changelog.packages.${system}.changelog
           ];
         };

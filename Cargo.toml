@@ -4,7 +4,13 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "Placeholder for the test-dsl crate"
+resolver = "2"
 
 [dependencies]
 kdl = "6.3.4"
 miette = "7.5.0"
+thiserror = "2.0.12"
+
+[dev-dependencies]
+insta = "1.42.2"
+miette = { version = "7.5.0", features = ["fancy"] }

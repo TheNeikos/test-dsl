@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
+use miette::Diagnostic;
+use thiserror::Error;
+
 pub trait TestVerb<H>: 'static {
     fn run(&self, harness: &H, arguments: &[kdl::KdlValue]);
     fn clone_box(&self) -> Box<dyn TestVerb<H>>;
@@ -102,10 +105,49 @@ pub struct TestDsl<H> {
     conditions: HashMap<String, Box<dyn TestCondition<H>>>,
 }
 
+impl<H> std::fmt::Debug for TestDsl<H> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TestDsl").finish_non_exhaustive()
+    }
+}
+
 impl<H: 'static> Default for TestDsl<H> {
     fn default() -> Self {
         Self::new()
     }
+}
+
+#[derive(Error, Diagnostic, Debug)]
+#[error("An error occurred while parsing testcases")]
+pub struct TestParseError {
+    #[related]
+    errors: Vec<TestParseErrorCase>,
+}
+
+impl From<kdl::KdlError> for TestParseError {
+    fn from(source: kdl::KdlError) -> Self {
+        TestParseError {
+            errors: vec![TestParseErrorCase::Kdl { source }],
+        }
+    }
+}
+
+#[derive(Error, Diagnostic, Debug)]
+enum TestParseErrorCase {
+    #[error("An error occurred while parsing the KDL data")]
+    Kdl {
+        #[source]
+        source: kdl::KdlError,
+    },
+    #[error("Not a valid test case")]
+    #[diagnostic(help("The outer items must all be `testcase`s"))]
+    NotTestcase {
+        #[label("Expected a `testcase`")]
+        span: miette::SourceSpan,
+
+        #[source_code]
+        source_code: String,
+    },
 }
 
 impl<H: 'static> TestDsl<H> {
@@ -129,14 +171,21 @@ impl<H: 'static> TestDsl<H> {
         assert!(existing.is_none());
     }
 
-    pub fn parse_document(&self, input: &str) -> miette::Result<Vec<TestCase<H>>> {
+    pub fn parse_document(&self, input: &str) -> Result<Vec<TestCase<H>>, TestParseError> {
         let document = kdl::KdlDocument::parse(input)?;
 
         let mut cases = vec![];
 
+        let mut errors = vec![];
+
         for testcase_node in document.nodes() {
             if testcase_node.name().value() != "testcase" {
-                return Err(miette::diagnostic!("expected a testcase").into());
+                errors.push(TestParseErrorCase::NotTestcase {
+                    span: testcase_node.name().span(),
+                    source_code: input.to_string(),
+                });
+
+                continue;
             }
 
             let mut testcase = TestCase::new();
@@ -146,6 +195,10 @@ impl<H: 'static> TestDsl<H> {
             }
 
             cases.push(testcase);
+        }
+
+        if !errors.is_empty() {
+            return Err(TestParseError { errors });
         }
 
         Ok(cases)
@@ -235,6 +288,12 @@ trait TestVerbCreator<H> {
 
 pub struct TestCase<H> {
     creators: Vec<Box<dyn TestVerbCreator<H>>>,
+}
+
+impl<H> std::fmt::Debug for TestCase<H> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TestCase").finish_non_exhaustive()
+    }
 }
 
 impl<H: 'static> Default for TestCase<H> {

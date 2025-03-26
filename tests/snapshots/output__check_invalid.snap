@@ -1,0 +1,38 @@
+---
+source: tests/output.rs
+expression: "format!(\"{:?}\", miette::Error::new(tc.unwrap_err()))"
+---
+  [31m×[0m An error occurred while parsing testcases
+
+Error: 
+  [31m×[0m Not a valid test case
+   ╭─[4:13]
+ [2m3[0m │             }
+ [2m4[0m │             tetcase {
+   · [35;1m            ───┬───[0m
+   ·                [35;1m╰── [35;1mExpected a `testcase`[0m[0m
+ [2m5[0m │             }
+   ╰────
+[36m  help: [0mThe outer items must all be `testcase`s
+
+Error: 
+  [31m×[0m Not a valid test case
+   ╭─[6:13]
+ [2m5[0m │             }
+ [2m6[0m │             foobar {
+   · [35;1m            ───┬──[0m
+   ·                [35;1m╰── [35;1mExpected a `testcase`[0m[0m
+ [2m7[0m │             }
+   ╰────
+[36m  help: [0mThe outer items must all be `testcase`s
+
+Error: 
+  [31m×[0m Not a valid test case
+   ╭─[8:13]
+ [2m7[0m │             }
+ [2m8[0m │             asd
+   · [35;1m            ─┬─[0m
+   ·              [35;1m╰── [35;1mExpected a `testcase`[0m[0m
+ [2m9[0m │         
+   ╰────
+[36m  help: [0mThe outer items must all be `testcase`s
