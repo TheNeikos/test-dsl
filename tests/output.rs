@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use miette::NamedSource;
-use test_dsl::FunctionVerb;
+use test_dsl::verb::FunctionVerb;
 
 #[test]
 fn check_invalid() {
