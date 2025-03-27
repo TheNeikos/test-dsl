@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
+pub use kdl;
 use miette::Diagnostic;
 use miette::NamedSource;
 use thiserror::Error;
