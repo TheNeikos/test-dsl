@@ -104,10 +104,11 @@ where
     }
 }
 
-impl<F, H: 'static> TestVerb<H> for FunctionVerb<H, F, (usize,)>
+impl<F, H: 'static, P1> TestVerb<H> for FunctionVerb<H, F, (P1,)>
 where
     F: Fn(&H, usize) + 'static,
     F: Clone,
+    P1: VerbArgument,
 {
     fn run(
         &self,
@@ -161,7 +162,7 @@ where
     }
 }
 
-pub trait VerbArgument: Sized {
+pub trait VerbArgument: Sized + 'static {
     fn from_value(value: &kdl::KdlEntry) -> Option<Self>;
 }
 
