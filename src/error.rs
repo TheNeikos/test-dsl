@@ -7,7 +7,7 @@ use thiserror::Error;
 #[error("An error occurred while parsing testcases")]
 pub struct TestParseError {
     #[related]
-    pub(crate) errors: Vec<TestParseErrorCase>,
+    pub(crate) errors: Vec<TestErrorCase>,
 
     #[source_code]
     pub(crate) source_code: Option<miette::NamedSource<Arc<str>>>,
@@ -16,14 +16,14 @@ pub struct TestParseError {
 impl From<kdl::KdlError> for TestParseError {
     fn from(source: kdl::KdlError) -> Self {
         TestParseError {
-            errors: vec![TestParseErrorCase::Kdl { source }],
+            errors: vec![TestErrorCase::Kdl { source }],
             source_code: None,
         }
     }
 }
 
-impl From<TestParseErrorCase> for TestParseError {
-    fn from(source: TestParseErrorCase) -> Self {
+impl From<TestErrorCase> for TestParseError {
+    fn from(source: TestErrorCase) -> Self {
         TestParseError {
             errors: vec![source],
             source_code: None,
@@ -32,7 +32,7 @@ impl From<TestParseErrorCase> for TestParseError {
 }
 
 #[derive(Error, Diagnostic, Debug)]
-pub(crate) enum TestParseErrorCase {
+pub enum TestErrorCase {
     #[error("An error occurred while parsing the KDL data")]
     Kdl {
         #[source]
@@ -68,16 +68,8 @@ pub(crate) enum TestParseErrorCase {
         #[label]
         verb: miette::SourceSpan,
     },
-}
 
-pub enum TestRunResult {
-    Ok,
-    Error(TestRunResultError),
-}
-
-#[derive(Error, Diagnostic, Debug)]
-#[error("An error occurred while running the test")]
-pub enum TestRunResultError {
+    #[error("A panic occurred while running the test")]
     Panic {
         #[diagnostic_source]
         error: miette::Error,
@@ -86,6 +78,7 @@ pub enum TestRunResultError {
         label: miette::SourceSpan,
     },
 
+    #[error("An error occurred while running the test")]
     Error {
         #[diagnostic_source]
         error: miette::Error,
@@ -94,4 +87,3 @@ pub enum TestRunResultError {
         label: miette::SourceSpan,
     },
 }
-

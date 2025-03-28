@@ -64,7 +64,7 @@ impl<H: 'static> TestDsl<H> {
 
         for testcase_node in document.nodes() {
             if testcase_node.name().value() != "testcase" {
-                errors.push(error::TestParseErrorCase::NotTestcase {
+                errors.push(error::TestErrorCase::NotTestcase {
                     span: testcase_node.name().span(),
                 });
 
@@ -96,17 +96,17 @@ impl<H: 'static> TestDsl<H> {
     fn parse_node(
         &self,
         verb_node: &kdl::KdlNode,
-    ) -> Result<Box<dyn TestVerbCreator<H>>, error::TestParseErrorCase> {
+    ) -> Result<Box<dyn TestVerbCreator<H>>, error::TestErrorCase> {
         match verb_node.name().value() {
             "repeat" => {
                 let times = verb_node
                     .get(0)
-                    .ok_or_else(|| error::TestParseErrorCase::MissingArgument {
+                    .ok_or_else(|| error::TestErrorCase::MissingArgument {
                         parent: verb_node.name().span(),
                         missing: String::from("`repeat` takes one argument, the repetition count"),
                     })?
                     .as_integer()
-                    .ok_or_else(|| error::TestParseErrorCase::WrongArgumentType {
+                    .ok_or_else(|| error::TestErrorCase::WrongArgumentType {
                         parent: verb_node.name().span(),
                         argument: verb_node.iter().next().unwrap().span(),
                         expected: String::from("Expected an integer"),
@@ -129,7 +129,7 @@ impl<H: 'static> TestDsl<H> {
                 let verb = self
                     .verbs
                     .get(name)
-                    .ok_or_else(|| error::TestParseErrorCase::UnknownVerb {
+                    .ok_or_else(|| error::TestErrorCase::UnknownVerb {
                         verb: verb_node.name().span(),
                     })?
                     .clone();
@@ -192,7 +192,7 @@ struct TestVerbInstance<'p, H> {
 }
 
 impl<'p, H: 'static> TestVerbInstance<'p, H> {
-    fn run<'h>(&'p self, harness: &'h mut H) -> Result<(), error::TestRunResultError> {
+    fn run<'h>(&'p self, harness: &'h mut H) -> Result<(), error::TestErrorCase> {
         self.verb.run(harness, self.node)
     }
 }

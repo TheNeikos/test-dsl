@@ -5,7 +5,7 @@ use miette::NamedSource;
 use thiserror::Error;
 
 use super::TestVerbCreator;
-use crate::error::TestRunResultError;
+use crate::error::TestErrorCase;
 
 pub struct TestCase<H> {
     pub(crate) creators: Vec<Box<dyn TestVerbCreator<H>>>,
@@ -22,7 +22,7 @@ impl<H> std::fmt::Debug for TestCase<H> {
 #[error("Testcase did not run successfully")]
 pub struct TestCaseError {
     #[diagnostic_source]
-    pub(crate) error: TestRunResultError,
+    pub(crate) error: TestErrorCase,
 
     #[source_code]
     pub(crate) source_code: miette::NamedSource<Arc<str>>,

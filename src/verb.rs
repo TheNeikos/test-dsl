@@ -2,10 +2,10 @@ use std::any::Any;
 use std::marker::PhantomData;
 
 use crate::arguments::VerbArgument;
-use crate::error::TestRunResultError;
+use crate::error::TestErrorCase;
 
 pub trait TestVerb<H>: 'static {
-    fn run(&self, harness: &mut H, node: &kdl::KdlNode) -> Result<(), TestRunResultError>;
+    fn run(&self, harness: &mut H, node: &kdl::KdlNode) -> Result<(), TestErrorCase>;
     fn clone_box(&self) -> Box<dyn TestVerb<H>>;
 }
 
@@ -44,7 +44,7 @@ impl<H> FunctionVerb<H> {
 
 struct BoxedCallable<H> {
     callable: Box<dyn Any>,
-    call_fn: fn(&dyn Any, &mut H, &kdl::KdlNode) -> Result<(), TestRunResultError>,
+    call_fn: fn(&dyn Any, &mut H, &kdl::KdlNode) -> Result<(), TestErrorCase>,
     clone_fn: fn(&dyn Any) -> Box<dyn Any>,
 }
 
@@ -76,13 +76,13 @@ impl<H> BoxedCallable<H> {
         }
     }
 
-    fn call(&self, harness: &mut H, node: &kdl::KdlNode) -> Result<(), TestRunResultError> {
+    fn call(&self, harness: &mut H, node: &kdl::KdlNode) -> Result<(), TestErrorCase> {
         (self.call_fn)(&*self.callable, harness, node)
     }
 }
 
 pub trait CallableVerb<H, T>: Clone + 'static {
-    fn call(&self, harness: &mut H, node: &kdl::KdlNode) -> Result<(), TestRunResultError>;
+    fn call(&self, harness: &mut H, node: &kdl::KdlNode) -> Result<(), TestErrorCase>;
 }
 
 impl<H, F> CallableVerb<H, ((),)> for F
@@ -90,8 +90,8 @@ where
     F: Fn(&mut H) -> miette::Result<()>,
     F: Clone + 'static,
 {
-    fn call(&self, harness: &mut H, node: &kdl::KdlNode) -> Result<(), TestRunResultError> {
-        self(harness).map_err(|error| TestRunResultError::Error {
+    fn call(&self, harness: &mut H, node: &kdl::KdlNode) -> Result<(), TestErrorCase> {
+        self(harness).map_err(|error| TestErrorCase::Error {
             error,
             label: node.span(),
         })
@@ -132,16 +132,54 @@ macro_rules! impl_callable {
                 $( $ty: VerbArgument, )*
                 $last: VerbArgument,
         {
-            fn call(&self, harness: &mut H, node: &kdl::KdlNode) -> Result<(), TestRunResultError> {
+            fn call(&self, harness: &mut H, node: &kdl::KdlNode) -> Result<(), TestErrorCase> {
                 let mut args = node.iter();
 
+                let total_count = 1
+                    $(
+                        + {
+                            const _: () = {
+                                #[allow(unused)]
+                                let $ty = ();
+                            };
+                            1
+                        }
+
+                    )*;
+
+                let mut running_count = 1;
+
                 $(
-                    let $ty = <$ty as VerbArgument>::from_value(args.next().unwrap()).unwrap();
+                    let arg = args.next().ok_or_else(|| TestErrorCase::MissingArgument {
+                        parent: node.span(),
+                        missing: format!("This function takes {} arguments, you're missing the {}th argument.", total_count, running_count),
+                    })?;
+
+                    let $ty = <$ty as VerbArgument>::from_value(arg).ok_or_else(|| {
+                        TestErrorCase::WrongArgumentType {
+                            parent: node.name().span(),
+                            argument: arg.span(),
+                            expected: format!("This function takes a '{}' as its argument here.", <$ty as VerbArgument>::TYPE_NAME),
+                        }
+                    })?;
+                    running_count += 1;
                 )*
 
-                let $last = <$last as VerbArgument>::from_value(args.next().unwrap()).unwrap();
+                let _ = running_count;
 
-                self(harness, $($ty,)* $last,).map_err(|error| TestRunResultError::Error {
+                let arg = args.next().ok_or_else(|| TestErrorCase::MissingArgument {
+                    parent: node.span(),
+                    missing: format!("This function takes {tc} arguments, you're missing the {tc}th argument.", tc = total_count),
+                })?;
+                let $last = <$last as VerbArgument>::from_value(arg).ok_or_else(|| {
+                    TestErrorCase::WrongArgumentType {
+                        parent: node.name().span(),
+                        argument: arg.span(),
+                        expected: format!("This function takes a '{}' as its argument here.", <$last as VerbArgument>::TYPE_NAME),
+                    }
+                })?;
+
+                self(harness, $($ty,)* $last,).map_err(|error| TestErrorCase::Error {
                     error,
                     label: node.span()
                 })
@@ -153,7 +191,7 @@ macro_rules! impl_callable {
 all_the_tuples!(impl_callable);
 
 impl<H: 'static> TestVerb<H> for FunctionVerb<H> {
-    fn run(&self, harness: &mut H, node: &kdl::KdlNode) -> Result<(), TestRunResultError> {
+    fn run(&self, harness: &mut H, node: &kdl::KdlNode) -> Result<(), TestErrorCase> {
         let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             self.func.call(harness, node)
         }));
@@ -173,7 +211,7 @@ impl<H: 'static> TestVerb<H> for FunctionVerb<H> {
                     message.clone_from(msg);
                 }
 
-                Err(TestRunResultError::Panic {
+                Err(TestErrorCase::Panic {
                     error: miette::Error::msg(message),
                     label: node.span(),
                 })

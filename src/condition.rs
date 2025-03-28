@@ -1,11 +1,11 @@
 use std::marker::PhantomData;
 
-use crate::error::TestRunResultError;
+use crate::error::TestErrorCase;
 
 pub trait TestCondition<H>: 'static {
-    fn check_now(&self, harness: &H, node: &kdl::KdlNode) -> Result<(), TestRunResultError>;
+    fn check_now(&self, harness: &H, node: &kdl::KdlNode) -> Result<(), TestErrorCase>;
 
-    fn wait_until_true(&self, harness: &H, node: &kdl::KdlNode) -> Result<(), TestRunResultError>;
+    fn wait_until_true(&self, harness: &H, node: &kdl::KdlNode) -> Result<(), TestErrorCase>;
 
     fn clone_box(&self) -> Box<dyn TestCondition<H>>;
 }
@@ -67,9 +67,9 @@ where
     N: Checker<H>,
     W: Checker<H>,
 {
-    fn check_now(&self, harness: &H, node: &kdl::KdlNode) -> Result<(), TestRunResultError> {
+    fn check_now(&self, harness: &H, node: &kdl::KdlNode) -> Result<(), TestErrorCase> {
         let Some(check) = self.now.check(harness) else {
-            return Err(TestRunResultError::Error {
+            return Err(TestErrorCase::Error {
                 error: miette::miette!("Condition does not implement checking now"),
                 label: node.span(),
             });
@@ -77,15 +77,15 @@ where
 
         check
             .then_some(())
-            .ok_or_else(|| crate::error::TestRunResultError::Error {
+            .ok_or_else(|| crate::error::TestErrorCase::Error {
                 error: miette::miette!("Check did not succeed"),
                 label: node.span(),
             })
     }
 
-    fn wait_until_true(&self, harness: &H, node: &kdl::KdlNode) -> Result<(), TestRunResultError> {
+    fn wait_until_true(&self, harness: &H, node: &kdl::KdlNode) -> Result<(), TestErrorCase> {
         let Some(check) = self.wait.check(harness) else {
-            return Err(TestRunResultError::Error {
+            return Err(TestErrorCase::Error {
                 error: miette::miette!("Condition does not implement waiting"),
                 label: node.span(),
             });
@@ -93,7 +93,7 @@ where
 
         check
             .then_some(())
-            .ok_or_else(|| crate::error::TestRunResultError::Error {
+            .ok_or_else(|| crate::error::TestErrorCase::Error {
                 error: miette::miette!("Check did not succeed"),
                 label: node.span(),
             })

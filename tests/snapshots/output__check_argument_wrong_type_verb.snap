@@ -3,10 +3,7 @@ source: tests/output.rs
 expression: "format!(\"{:?}\", miette::Error::new(tc.unwrap_err()))"
 ---
   [31m×[0m Testcase did not run successfully
-[31m  ╰─▶ [0m  [31m×[0m Failed while parsing
-[31m      [0m
-[31m      [0mError:
-[31m      [0m  [31m×[0m An argument was missing
+[31m  ╰─▶ [0m  [31m×[0m An argument was missing
 [31m      [0m   ╭─[[36;1;4mtest.kdl:3:17[0m]
 [31m      [0m [2m2[0m │             testcase {
 [31m      [0m [2m3[0m │                 foobar
@@ -14,5 +11,5 @@ expression: "format!(\"{:?}\", miette::Error::new(tc.unwrap_err()))"
 [31m      [0m   ·                    [35;1m╰── [35;1mThis node is missing an argument[0m[0m
 [31m      [0m [2m4[0m │             }
 [31m      [0m   ╰────
-[31m      [0m[36m  help: [0mThis node requires an integer argument
+[31m      [0m[36m  help: [0mThis function takes 1 arguments, you're missing the 1th argument.
 [31m      [0m
