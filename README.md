@@ -10,7 +10,7 @@ cargo add --dev test-dsl
 `test-dsl` allows you define a set of verbs and conditions, to more easily
 concentrate on authoring tests.
 
-## How to use
+## How to use it
 
 Using `test-dsl` is straightforward:
 
@@ -79,3 +79,39 @@ let testcases = ts
 testcases[0].run(&mut 0).unwrap();
 testcases[1].run(&mut 0).unwrap();
 ```
+
+## Builtin verbs
+
+The following verbs come builtin:
+
+- `repeat <number> { .. }`: it allows for repetition of a given block. Used as such:
+    ```
+    testcase {
+        repeat 3 {
+            print "Hello World"
+
+            print "World Hello"
+        }
+    }
+    ```
+
+- `group { .. }`: it allows to group verbs together. Used as such:
+    ```
+    testcase {
+        group {
+            print "Hello"
+            print "World"
+        }
+    }
+    ```
+    NB: There is currently not much use to groups, but this may change in the future
+
+- `assert { .. }`: it allows to assert a list of conditions. Used as such:
+    ```
+    testcase {
+        send_message
+        assert {
+            message_was_sent
+        }
+    }
+    ```
