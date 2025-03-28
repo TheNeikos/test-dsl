@@ -3,7 +3,10 @@ name = "test-dsl"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "Placeholder for the test-dsl crate"
+description = "A helper crate to define easy-to-author tests as KDL documents"
+repository = "https://github.com/TheNeikos/test-dsl"
+keywords = ["testing", "dsl", "kdl"]
+categories = ["development-tools::testing"]
 resolver = "2"
 
 [dependencies]
