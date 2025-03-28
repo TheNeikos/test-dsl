@@ -133,12 +133,10 @@ impl<H: 'static> TestDsl<H> {
                         verb: verb_node.name().span(),
                     })?
                     .clone();
-                let params = verb_node.iter().cloned().collect();
 
                 Ok(Box::new(DirectVerb {
                     verb,
                     node: verb_node.clone(),
-                    params,
                 }))
             }
         }
@@ -177,7 +175,6 @@ impl<H: 'static> TestVerbCreator<H> for Repeat<H> {
 struct DirectVerb<H> {
     verb: Box<dyn TestVerb<H>>,
     node: kdl::KdlNode,
-    params: Vec<kdl::KdlEntry>,
 }
 
 impl<H: 'static> TestVerbCreator<H> for DirectVerb<H> {
@@ -185,7 +182,6 @@ impl<H: 'static> TestVerbCreator<H> for DirectVerb<H> {
         Box::new(std::iter::once(TestVerbInstance {
             verb: self.verb.clone(),
             node: &self.node,
-            params: &self.params,
         }))
     }
 }
@@ -193,7 +189,6 @@ impl<H: 'static> TestVerbCreator<H> for DirectVerb<H> {
 struct TestVerbInstance<'p, H> {
     verb: Box<dyn TestVerb<H>>,
     node: &'p kdl::KdlNode,
-    params: &'p [kdl::KdlEntry],
 }
 
 impl<'p, H: 'static> TestVerbInstance<'p, H> {
@@ -201,7 +196,7 @@ impl<'p, H: 'static> TestVerbInstance<'p, H> {
         &'p self,
         harness: &'h mut H,
     ) -> Result<error::TestRunResult, error::TestParseError> {
-        self.verb.run(harness, self.node, self.params)
+        self.verb.run(harness, self.node)
     }
 }
 

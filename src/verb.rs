@@ -7,12 +7,7 @@ use crate::error::TestRunResult;
 use crate::error::TestRunResultError;
 
 pub trait TestVerb<H>: 'static {
-    fn run(
-        &self,
-        harness: &mut H,
-        node: &kdl::KdlNode,
-        arguments: &[kdl::KdlEntry],
-    ) -> Result<TestRunResult, TestParseError>;
+    fn run(&self, harness: &mut H, node: &kdl::KdlNode) -> Result<TestRunResult, TestParseError>;
     fn clone_box(&self) -> Box<dyn TestVerb<H>>;
 }
 
@@ -66,12 +61,7 @@ where
     F: Fn(&mut H) + 'static,
     F: Clone,
 {
-    fn run(
-        &self,
-        harness: &mut H,
-        node: &kdl::KdlNode,
-        _arguments: &[kdl::KdlEntry],
-    ) -> Result<TestRunResult, TestParseError> {
+    fn run(&self, harness: &mut H, node: &kdl::KdlNode) -> Result<TestRunResult, TestParseError> {
         let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             (self.func)(harness);
         }));
@@ -110,14 +100,10 @@ where
     F: Clone,
     P1: VerbArgument,
 {
-    fn run(
-        &self,
-        harness: &mut H,
-        node: &kdl::KdlNode,
-        arguments: &[kdl::KdlEntry],
-    ) -> Result<TestRunResult, TestParseError> {
-        let arg = arguments
-            .first()
+    fn run(&self, harness: &mut H, node: &kdl::KdlNode) -> Result<TestRunResult, TestParseError> {
+        let arg = node
+            .iter()
+            .next()
             .ok_or_else(|| TestParseErrorCase::MissingArgument {
                 parent: node.name().span(),
                 missing: String::from("This node requires an integer argument"),
