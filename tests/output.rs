@@ -189,3 +189,59 @@ fn check_conditions() {
 
     insta::assert_snapshot!(format!("{:?}", miette::Error::new(is_false.unwrap_err())));
 }
+
+#[test]
+fn check_arithmetic() {
+    let mut ts = test_dsl::TestDsl::<usize>::new();
+
+    ts.add_condition("is_fortytwo", Condition::new_now(|h: &usize| Ok(*h == 42)));
+    ts.add_condition(
+        "is_equal",
+        Condition::new_now(|h: &usize, num: usize| Ok(*h == num)),
+    );
+
+    ts.add_verb(
+        "add",
+        FunctionVerb::new(|h: &mut usize, num: usize| {
+            *h += num;
+            Ok(())
+        }),
+    );
+
+    ts.add_verb(
+        "mul",
+        FunctionVerb::new(|h: &mut usize, num: usize| {
+            *h *= num;
+            Ok(())
+        }),
+    );
+
+    let testcases = ts
+        .parse_document(NamedSource::new(
+            "test.kdl",
+            Arc::from(
+                r#"
+            testcase {
+                add 21
+                mul 2
+                assert {
+                    is_fortytwo
+                }
+            }
+
+            testcase {
+                add 10
+                mul 10
+                assert {
+                    is_equal 100
+                }
+            }
+        "#,
+            ),
+        ))
+        .unwrap();
+
+    // Check that its true
+    testcases[0].run(&mut 0).unwrap();
+    testcases[1].run(&mut 0).unwrap();
+}
