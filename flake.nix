@@ -92,6 +92,7 @@
             rustTarget
 
             pkgs.cargo-insta
+            pkgs.cargo-semver-checks
             inputs.cargo-changelog.packages.${system}.changelog
           ];
         };
