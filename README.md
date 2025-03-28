@@ -21,6 +21,11 @@ Using `test-dsl` is straightforward:
 For example, a fairly simple test-setup to check arithmetic can be defined as follows:
 
 ```rust
+use std::sync::Arc;
+use test_dsl::condition::Condition;
+use test_dsl::verb::FunctionVerb;
+use miette::NamedSource;
+
 let mut ts = test_dsl::TestDsl::<usize>::new();
 
 ts.add_condition("is_fortytwo", Condition::new_now(|h: &usize| Ok(*h == 42)));
