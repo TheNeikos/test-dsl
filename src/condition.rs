@@ -115,6 +115,48 @@ impl<H> Condition<H> {
             _pd: PhantomData,
         }
     }
+
+    /// Create a new [`Condition`] that can be called in waiting contexts
+    pub fn new_wait<C, T>(wait: C) -> Self
+    where
+        C: Checker<H, T>,
+    {
+        Condition {
+            now: None,
+            wait: Some(BoxedChecker::new(wait)),
+            _pd: PhantomData,
+        }
+    }
+
+    /// Create a new [`Condition`] that can be called in both direct and waiting contexts
+    pub fn new_now_and_wait<C, T>(both: C) -> Self
+    where
+        C: Checker<H, T>,
+    {
+        Condition {
+            now: Some(BoxedChecker::new(both.clone())),
+            wait: Some(BoxedChecker::new(both)),
+            _pd: PhantomData,
+        }
+    }
+
+    /// Allow this condition to also be used in direct contexts
+    pub fn with_now<C, T>(mut self, now: C) -> Self
+    where
+        C: Checker<H, T>,
+    {
+        self.now = Some(BoxedChecker::new(now));
+        self
+    }
+
+    /// Allow this condition to also be used in waiting contexts
+    pub fn with_wait<C, T>(mut self, wait: C) -> Self
+    where
+        C: Checker<H, T>,
+    {
+        self.wait = Some(BoxedChecker::new(wait));
+        self
+    }
 }
 
 impl<H> Clone for Condition<H> {
