@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use condition::TestCondition;
 use verb::TestVerb;
 
 pub mod arguments;
@@ -40,7 +41,7 @@ impl<H: 'static> TestDsl<H> {
         assert!(existing.is_none());
     }
 
-    pub fn add_conditions(
+    pub fn add_condition(
         &mut self,
         name: impl AsRef<str>,
         condition: impl condition::TestCondition<H>,
@@ -74,7 +75,7 @@ impl<H: 'static> TestDsl<H> {
             let mut testcase = test_case::TestCase::new(input.clone());
 
             for verb_node in testcase_node.iter_children() {
-                match self.parse_node(verb_node) {
+                match self.parse_verb(verb_node) {
                     Ok(verb) => testcase.creators.push(verb),
                     Err(e) => errors.push(e),
                 }
@@ -93,7 +94,24 @@ impl<H: 'static> TestDsl<H> {
         Ok(cases)
     }
 
-    fn parse_node(
+    fn parse_condition(
+        &self,
+        condition_node: &kdl::KdlNode,
+    ) -> Result<Box<dyn TestConditionCreator<H>>, error::TestErrorCase> {
+        self.conditions
+            .get(condition_node.name().value())
+            .ok_or_else(|| error::TestErrorCase::UnknownCondition {
+                condition: condition_node.name().span(),
+            })
+            .map(|cond| {
+                Box::new(DirectCondition {
+                    condition: cond.clone(),
+                    node: condition_node.clone(),
+                }) as Box<_>
+            })
+    }
+
+    fn parse_verb(
         &self,
         verb_node: &kdl::KdlNode,
     ) -> Result<Box<dyn TestVerbCreator<H>>, error::TestErrorCase> {
@@ -114,7 +132,7 @@ impl<H: 'static> TestDsl<H> {
 
                 let block = verb_node
                     .iter_children()
-                    .map(|node| self.parse_node(node))
+                    .map(|node| self.parse_verb(node))
                     .collect::<Result<_, _>>()?;
 
                 Ok(Box::new(Repeat { times, block }))
@@ -122,7 +140,13 @@ impl<H: 'static> TestDsl<H> {
             "group" => Ok(Box::new(Group {
                 block: verb_node
                     .iter_children()
-                    .map(|n| self.parse_node(n))
+                    .map(|n| self.parse_verb(n))
+                    .collect::<Result<_, _>>()?,
+            })),
+            "assert" => Ok(Box::new(AssertConditions {
+                conditions: verb_node
+                    .iter_children()
+                    .map(|node| self.parse_condition(node))
                     .collect::<Result<_, _>>()?,
             })),
             name => {
@@ -145,6 +169,10 @@ impl<H: 'static> TestDsl<H> {
 
 trait TestVerbCreator<H> {
     fn get_test_verbs(&self) -> Box<dyn Iterator<Item = TestVerbInstance<'_, H>> + '_>;
+}
+
+trait TestConditionCreator<H> {
+    fn get_test_conditions(&self) -> Box<dyn Iterator<Item = TestConditionInstance<'_, H>> + '_>;
 }
 
 struct Group<H> {
@@ -184,6 +212,73 @@ impl<H: 'static> TestVerbCreator<H> for DirectVerb<H> {
             node: &self.node,
         }))
     }
+}
+
+struct DirectCondition<H> {
+    condition: Box<dyn TestCondition<H>>,
+    node: kdl::KdlNode,
+}
+
+impl<H: 'static> TestConditionCreator<H> for DirectCondition<H> {
+    fn get_test_conditions(&self) -> Box<dyn Iterator<Item = TestConditionInstance<'_, H>> + '_> {
+        Box::new(std::iter::once(TestConditionInstance {
+            condition: self.condition.clone(),
+            node: &self.node,
+        }))
+    }
+}
+
+struct AssertConditions<H> {
+    conditions: Vec<Box<dyn TestConditionCreator<H>>>,
+}
+
+impl<H: 'static> TestVerbCreator<H> for AssertConditions<H> {
+    fn get_test_verbs(&self) -> Box<dyn Iterator<Item = TestVerbInstance<'_, H>> + '_> {
+        Box::new(
+            self.conditions
+                .iter()
+                .flat_map(|cond| cond.get_test_conditions())
+                .map(|cond| TestVerbInstance {
+                    node: cond.node,
+                    verb: Box::new(AssertVerb {
+                        condition: cond.condition,
+                    }),
+                }),
+        )
+    }
+}
+
+struct AssertVerb<H> {
+    condition: Box<dyn TestCondition<H>>,
+}
+
+impl<H: 'static> TestVerb<H> for AssertVerb<H> {
+    fn run(&self, harness: &mut H, node: &kdl::KdlNode) -> Result<(), error::TestErrorCase> {
+        self.condition.check_now(harness, node).and_then(|res| {
+            res.then_some(())
+                .ok_or_else(|| error::TestErrorCase::Error {
+                    error: miette::miette!("Assert failed"),
+                    label: node.span(),
+                })
+        })
+    }
+
+    fn clone_box(&self) -> Box<dyn TestVerb<H>> {
+        Box::new(self.clone())
+    }
+}
+
+impl<H: 'static> Clone for AssertVerb<H> {
+    fn clone(&self) -> Self {
+        AssertVerb {
+            condition: self.condition.clone(),
+        }
+    }
+}
+
+struct TestConditionInstance<'p, H> {
+    condition: Box<dyn TestCondition<H>>,
+    node: &'p kdl::KdlNode,
 }
 
 struct TestVerbInstance<'p, H> {

@@ -12,6 +12,13 @@ pub trait TestCondition<H>: 'static {
     fn clone_box(&self) -> Box<dyn TestCondition<H>>;
 }
 
+impl<H: 'static> Clone for Box<dyn TestCondition<H>> {
+    fn clone(&self) -> Self {
+        let this: &dyn TestCondition<H> = &**self;
+        this.clone_box()
+    }
+}
+
 pub trait Checker<H, T>: Clone + 'static {
     fn check(&self, harness: &H, node: &kdl::KdlNode) -> Result<bool, TestErrorCase>;
 }

@@ -12,5 +12,5 @@ expression: "format!(\"{:?}\", miette::Error::new(tc.unwrap_err()))"
 [31m      [0m   ·                    [35;1m╰── [35;1mThis node has an argument of a wrong kind[0m[0m
 [31m      [0m [2m4[0m │             }
 [31m      [0m   ╰────
-[31m      [0m[36m  help: [0mThis function takes a 'integer' as its argument here.
+[31m      [0m[36m  help: [0mThis verb takes a 'integer' as its argument here.
 [31m      [0m

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use miette::NamedSource;
+use test_dsl::condition::Condition;
 use test_dsl::verb::FunctionVerb;
 
 #[test]
@@ -151,4 +152,40 @@ fn check_verb_panic_fail() {
         .run(&mut ());
 
     insta::assert_snapshot!(format!("{:?}", miette::Error::new(tc.unwrap_err())));
+}
+
+#[test]
+fn check_conditions() {
+    let mut ts = test_dsl::TestDsl::<()>::new();
+
+    ts.add_condition("is_true", Condition::new_now(|_h: &()| Ok(true)));
+    ts.add_condition("is_false", Condition::new_now(|_h: &()| Ok(false)));
+
+    let testcases = ts
+        .parse_document(NamedSource::new(
+            "test.kdl",
+            Arc::from(
+                r#"
+            testcase {
+                assert {
+                    is_true
+                }
+            }
+
+            testcase {
+                assert {
+                    is_false
+                }
+            }
+        "#,
+            ),
+        ))
+        .unwrap();
+
+    // Check that its true
+    testcases[0].run(&mut ()).unwrap();
+
+    let is_false = testcases[1].run(&mut ());
+
+    insta::assert_snapshot!(format!("{:?}", miette::Error::new(is_false.unwrap_err())));
 }

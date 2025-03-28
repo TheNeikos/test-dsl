@@ -11,5 +11,5 @@ expression: "format!(\"{:?}\", miette::Error::new(tc.unwrap_err()))"
 [31m      [0m   ·                    [35;1m╰── [35;1mThis node is missing an argument[0m[0m
 [31m      [0m [2m4[0m │             }
 [31m      [0m   ╰────
-[31m      [0m[36m  help: [0mThis function takes 1 arguments, you're missing the 1th argument.
+[31m      [0m[36m  help: [0mThis verb takes 1 arguments, you're missing the 1th argument.
 [31m      [0m

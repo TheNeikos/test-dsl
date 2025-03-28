@@ -63,6 +63,11 @@ pub enum TestErrorCase {
         #[help]
         expected: String,
     },
+    #[error("Could not find condition with this name")]
+    UnknownCondition {
+        #[label]
+        condition: miette::SourceSpan,
+    },
     #[error("Could not find verb with this name")]
     UnknownVerb {
         #[label]
