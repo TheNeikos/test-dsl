@@ -16,4 +16,3 @@ impl VerbArgument for usize {
         value.value().as_integer().map(|i| i as usize)
     }
 }
-
