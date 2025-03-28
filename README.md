@@ -1,51 +1,76 @@
 # test-dsl is a test-helper library to write your own DSLs
 
-It allows you define a set of verbs and conditions, to more easily concentrate
-on authoring tests thus making your software more robust.
+[![Crates.io Version](https://img.shields.io/crates/v/test-dsl)](https://crates.io/crates/test-dsl)
+[![docs.rs (with version)](https://img.shields.io/docsrs/test-dsl/latest)](https://docs.rs/test-dsl)
+
+```sh
+cargo add --dev test-dsl
+```
+
+`test-dsl` allows you define a set of verbs and conditions, to more easily
+concentrate on authoring tests.
 
 ## How to use
 
+Using `test-dsl` is straightforward:
 
-```kdl
-testcase "Check for invalid output" {
-    connect_to_server 1
-    send_message "Hello"
-    verify_now {
-        received_message "World"
-    }
-    wait_until_true {
+- You define a test harness
+- You define a set of 'verbs' that will allow you to act on your test harness
+- You define a set of 'conditions' that you will be able to assert during your tests
 
-    }
-    repeat 10 {
-        send_messages "Hello"
-    }
-}
-```
+For example, a fairly simple test-setup to check arithmetic can be defined as follows:
 
 ```rust
-let mut dsl = TestDsl::<TestHarness>::new();
+let mut ts = test_dsl::TestDsl::<usize>::new();
 
-dsl.register_verb("connect_to_server", |id: usize| {
-    // Do stuff!
-});
+ts.add_condition("is_fortytwo", Condition::new_now(|h: &usize| Ok(*h == 42)));
+ts.add_condition(
+    "is_equal",
+    Condition::new_now(|h: &usize, num: usize| Ok(*h == num)),
+);
 
-dsl.register_verb("send_message", |msg: String| {
-    // Send to server!?
-});
+ts.add_verb(
+    "add",
+    FunctionVerb::new(|h: &mut usize, num: usize| {
+        *h += num;
+        Ok(())
+    }),
+);
 
-dsl.register_verb("repeat", meta_verb(|args, nodes| {
+ts.add_verb(
+    "mul",
+    FunctionVerb::new(|h: &mut usize, num: usize| {
+        *h *= num;
+        Ok(())
+    }),
+);
 
-}));
+let testcases = ts
+    .parse_document(NamedSource::new(
+        "test.kdl",
+        Arc::from(
+            r#"
+        testcase {
+            add 21
+            mul 2
+            assert {
+                is_fortytwo
+            }
+        }
 
-dsl.register_condition("received_message", |mode: WaitingMode, msg: String| {
-    if mode == WaitingMode::Wait {
-        // Await until the message has been received (if its hasnt already)
-    } else {
-        // Just check now and return imediately
-    }
-});
+        testcase {
+            add 10
+            mul 10
+            assert {
+                is_equal 100
+            }
+        }
+    "#,
+        ),
+    ))
+    .unwrap();
 
-let runner = dsl.load_file("./foobar");
-
-runner.run(TestHarness);
+// Check that its true
+testcases[0].run(&mut 0).unwrap();
+testcases[1].run(&mut 0).unwrap();
 ```
