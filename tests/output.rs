@@ -89,8 +89,9 @@ fn check_argument_wrong_type_verb() {
 
     ts.add_verb(
         "foobar",
-        FunctionVerb::from(|_: &mut (), _: usize| {
+        FunctionVerb::new(|_: &mut (), _: usize| {
             // Nothing
+            Ok(())
         }),
     );
 
@@ -131,10 +132,7 @@ fn check_argument_wrong_type_verb() {
 fn check_verb_panic_fail() {
     let mut ts = test_dsl::TestDsl::<()>::new();
 
-    ts.add_verb(
-        "foobar",
-        FunctionVerb::from(|_: &mut (), _: usize| panic!()),
-    );
+    ts.add_verb("foobar", FunctionVerb::new(|_: &mut (), _: usize| panic!()));
 
     let tc = ts
         .parse_document(NamedSource::new(

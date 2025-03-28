@@ -5,7 +5,7 @@ use miette::NamedSource;
 use thiserror::Error;
 
 use super::TestVerbCreator;
-use crate::error;
+use crate::error::TestRunResultError;
 
 pub struct TestCase<H> {
     pub(crate) creators: Vec<Box<dyn TestVerbCreator<H>>>,
@@ -22,20 +22,10 @@ impl<H> std::fmt::Debug for TestCase<H> {
 #[error("Testcase did not run successfully")]
 pub struct TestCaseError {
     #[diagnostic_source]
-    pub(crate) error: TestCaseErrorCase,
+    pub(crate) error: TestRunResultError,
 
     #[source_code]
     pub(crate) source_code: miette::NamedSource<Arc<str>>,
-}
-
-#[derive(Error, Diagnostic, Debug)]
-pub(crate) enum TestCaseErrorCase {
-    #[diagnostic(transparent)]
-    #[error("Failed while running")]
-    Run { error: error::TestRunResultError },
-    #[diagnostic(transparent)]
-    #[error("Failed while parsing")]
-    Parse { error: error::TestParseError },
 }
 
 impl<H: 'static> TestCase<H> {
@@ -51,13 +41,7 @@ impl<H: 'static> TestCase<H> {
             .iter()
             .flat_map(|c| {
                 c.get_test_verbs()
-                    .map(|verb| match verb.run(harness) {
-                        Ok(error::TestRunResult::Ok) => Ok(()),
-                        Ok(error::TestRunResult::Error(error)) => {
-                            Err(TestCaseErrorCase::Run { error })
-                        }
-                        Err(error) => Err(TestCaseErrorCase::Parse { error }),
-                    })
+                    .map(|verb| verb.run(harness))
                     .collect::<Vec<_>>()
             })
             .collect::<Result<(), _>>()

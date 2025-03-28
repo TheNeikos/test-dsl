@@ -192,10 +192,7 @@ struct TestVerbInstance<'p, H> {
 }
 
 impl<'p, H: 'static> TestVerbInstance<'p, H> {
-    fn run<'h>(
-        &'p self,
-        harness: &'h mut H,
-    ) -> Result<error::TestRunResult, error::TestParseError> {
+    fn run<'h>(&'p self, harness: &'h mut H) -> Result<(), error::TestRunResultError> {
         self.verb.run(harness, self.node)
     }
 }
@@ -219,17 +216,20 @@ mod tests {
         let mut ts = TestDsl::<ArithmeticHarness>::new();
         ts.add_verb(
             "add_one",
-            FunctionVerb::from(|ah: &mut ArithmeticHarness| {
+            FunctionVerb::new(|ah: &mut ArithmeticHarness| {
                 ah.value.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+                Ok(())
             }),
         );
 
         ts.add_verb(
             "mul_two",
-            FunctionVerb::from(|ah: &mut ArithmeticHarness| {
+            FunctionVerb::new(|ah: &mut ArithmeticHarness| {
                 let value = ah.value.load(std::sync::atomic::Ordering::SeqCst);
                 ah.value
                     .store(value * 2, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
             }),
         );
 
@@ -262,17 +262,21 @@ mod tests {
         let mut ts = TestDsl::<ArithmeticHarness>::new();
         ts.add_verb(
             "add_one",
-            FunctionVerb::from(|ah: &mut ArithmeticHarness| {
+            FunctionVerb::new(|ah: &mut ArithmeticHarness| {
                 ah.value.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+                Ok(())
             }),
         );
 
         ts.add_verb(
             "mul_two",
-            FunctionVerb::from(|ah: &mut ArithmeticHarness| {
+            FunctionVerb::new(|ah: &mut ArithmeticHarness| {
                 let value = ah.value.load(std::sync::atomic::Ordering::SeqCst);
                 ah.value
                     .store(value * 2, std::sync::atomic::Ordering::SeqCst);
+
+                Ok(())
             }),
         );
 
@@ -308,24 +312,28 @@ mod tests {
         let mut ts = TestDsl::<ArithmeticHarness>::new();
         ts.add_verb(
             "add_one",
-            FunctionVerb::from(|ah: &mut ArithmeticHarness| {
+            FunctionVerb::new(|ah: &mut ArithmeticHarness| {
                 ah.value.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+                Ok(())
             }),
         );
 
         ts.add_verb(
             "add",
-            FunctionVerb::from(|ah: &mut ArithmeticHarness, num: usize| {
+            FunctionVerb::new(|ah: &mut ArithmeticHarness, num: usize| {
                 ah.value.fetch_add(num, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
             }),
         );
 
         ts.add_verb(
             "mul_two",
-            FunctionVerb::from(|ah: &mut ArithmeticHarness| {
+            FunctionVerb::new(|ah: &mut ArithmeticHarness| {
                 let value = ah.value.load(std::sync::atomic::Ordering::SeqCst);
                 ah.value
                     .store(value * 2, std::sync::atomic::Ordering::SeqCst);
+                Ok(())
             }),
         );
 
