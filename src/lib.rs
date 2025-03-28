@@ -1,3 +1,6 @@
+#![deny(missing_docs)]
+#![doc = include_str!("../README.md")]
+
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -11,6 +14,10 @@ pub mod test_case;
 pub mod verb;
 pub use kdl;
 
+/// The main type of the crate
+///
+/// It contains all available verbs and conditions, and is used to derive
+/// [`TestCase`](test_case::TestCase)s.
 pub struct TestDsl<H> {
     verbs: HashMap<String, Box<dyn TestVerb<H>>>,
     conditions: HashMap<String, Box<dyn condition::TestCondition<H>>>,
@@ -29,6 +36,7 @@ impl<H: 'static> Default for TestDsl<H> {
 }
 
 impl<H: 'static> TestDsl<H> {
+    /// Create an empty [`TestDsl`]
     pub fn new() -> Self {
         TestDsl {
             verbs: HashMap::default(),
@@ -36,11 +44,22 @@ impl<H: 'static> TestDsl<H> {
         }
     }
 
+    /// Add a single verb
+    ///
+    /// The name is used as-is in your testcases, the arguments are up to each individual [`TestVerb`] implementation.
+    ///
+    /// See [`FunctionVerb`](verb::FunctionVerb) for an easy to use way of defining verbs.
     pub fn add_verb(&mut self, name: impl AsRef<str>, verb: impl TestVerb<H>) {
         let existing = self.verbs.insert(name.as_ref().to_string(), Box::new(verb));
         assert!(existing.is_none());
     }
 
+    /// Add a single condition
+    ///
+    /// The name is used as-is in your testcases, the arguments are up to each individual
+    /// [`TestCondition`] implementation.
+    ///
+    /// See [`Condition`](condition::Condition) for an easy to use way of defining conditions.
     pub fn add_condition(
         &mut self,
         name: impl AsRef<str>,
@@ -53,6 +72,8 @@ impl<H: 'static> TestDsl<H> {
         assert!(existing.is_none());
     }
 
+    /// Parse a given document as a [`KdlDocument`](kdl::KdlDocument) and generate a
+    /// [`TestCase`](test_case::TestCase) out of it.
     pub fn parse_document(
         &self,
         input: miette::NamedSource<Arc<str>>,

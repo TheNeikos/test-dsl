@@ -1,14 +1,35 @@
+//! Foobar
+
 use std::any::Any;
 use std::marker::PhantomData;
 
 use crate::arguments::VerbArgument;
 use crate::error::TestErrorCase;
 
+/// A condition check for a given property
+///
+/// Conditions allow to check for anything you would find useful. For example, in a HTTP library,
+/// you can check that your cache contains a valid entry from a previous request.
 pub trait TestCondition<H>: 'static {
+    /// Run the check now, may or may not actually be implemented
+    ///
+    /// This is only useful for non-transient properties. For example "is this connected". It is
+    /// not a way to check for events.
+    ///
+    /// If the condition cannot properly support the concept of 'checking now' it is ok to simply
+    /// return an error.
     fn check_now(&self, harness: &H, node: &kdl::KdlNode) -> Result<bool, TestErrorCase>;
 
+    /// Wait until a given condition evaluates to a meaningful value
+    ///
+    /// Some properties of a system are not meaningful other than 'that they happened'. This could
+    /// be an event or some value changing.
+    ///
+    /// If the condition cannot properly support the concept of 'waiting until it has a value', it
+    /// is ok to simply return an error.
     fn wait_until(&self, harness: &H, node: &kdl::KdlNode) -> Result<bool, TestErrorCase>;
 
+    /// Clone the condition
     fn clone_box(&self) -> Box<dyn TestCondition<H>>;
 }
 
@@ -19,7 +40,13 @@ impl<H: 'static> Clone for Box<dyn TestCondition<H>> {
     }
 }
 
+/// A [`Checker`] is the actual instance that executes when a condition evaluates.
+///
+/// It is mostly used with the [`Condition`] struct when given a closure/function.
+///
+/// It is implemented for closures of up to 16 arguments and their
 pub trait Checker<H, T>: Clone + 'static {
+    /// Execute the check with the given node
     fn check(&self, harness: &H, node: &kdl::KdlNode) -> Result<bool, TestErrorCase>;
 }
 
@@ -64,6 +91,10 @@ impl<H> Clone for BoxedChecker<H> {
     }
 }
 
+/// A condition that can be used in test-cases
+///
+/// Depending on how it is constructed, it may or may not be able to be used in direct or waiting
+/// contexts
 pub struct Condition<H> {
     now: Option<BoxedChecker<H>>,
     wait: Option<BoxedChecker<H>>,
@@ -71,6 +102,9 @@ pub struct Condition<H> {
 }
 
 impl<H> Condition<H> {
+    /// Create a new [`Condition`] that can be called in direct contexts
+    ///
+    /// For example the `assert` verb allows you to verify multiple [`TestCondition`]s (of which [`Condition`] is one way to create one).
     pub fn new_now<C, T>(now: C) -> Self
     where
         C: Checker<H, T>,

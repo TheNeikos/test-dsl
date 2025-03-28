@@ -1,3 +1,5 @@
+//! Individual testcases
+
 use std::sync::Arc;
 
 use miette::Diagnostic;
@@ -7,6 +9,7 @@ use thiserror::Error;
 use super::TestVerbCreator;
 use crate::error::TestErrorCase;
 
+/// A singular test case
 pub struct TestCase<H> {
     pub(crate) creators: Vec<Box<dyn TestVerbCreator<H>>>,
     pub(crate) source_code: NamedSource<Arc<str>>,
@@ -20,6 +23,7 @@ impl<H> std::fmt::Debug for TestCase<H> {
 
 #[derive(Error, Diagnostic, Debug)]
 #[error("Testcase did not run successfully")]
+/// An error occured while running a test
 pub struct TestCaseError {
     #[diagnostic_source]
     pub(crate) error: TestErrorCase,
@@ -29,13 +33,14 @@ pub struct TestCaseError {
 }
 
 impl<H: 'static> TestCase<H> {
-    pub fn new(source_code: miette::NamedSource<Arc<str>>) -> Self {
+    pub(crate) fn new(source_code: miette::NamedSource<Arc<str>>) -> Self {
         TestCase {
             creators: vec![],
             source_code,
         }
     }
 
+    /// Run the given test and report on its success
     pub fn run(&self, harness: &mut H) -> Result<(), TestCaseError> {
         self.creators
             .iter()

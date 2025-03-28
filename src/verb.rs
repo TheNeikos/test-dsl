@@ -1,11 +1,20 @@
+//! Definition of verbs
+//!
+//! Verbs are the bread and butter of `test-dsl`. They define the behaviour that is then run
+//! against your test harness.
+
 use std::any::Any;
 use std::marker::PhantomData;
 
 use crate::arguments::VerbArgument;
 use crate::error::TestErrorCase;
 
+/// A verb is anything that 'does' things in a [`TestCase`](crate::test_case::TestCase)
 pub trait TestVerb<H>: 'static {
+    /// Run the verb, and do its thing
     fn run(&self, harness: &mut H, node: &kdl::KdlNode) -> Result<(), TestErrorCase>;
+
+    /// Clone the verb
     fn clone_box(&self) -> Box<dyn TestVerb<H>>;
 }
 
@@ -16,6 +25,9 @@ impl<H: 'static> Clone for Box<dyn TestVerb<H>> {
     }
 }
 
+/// A verb defined through a closure/function
+///
+/// See the [`CallableVerb`] trait for what can be used
 pub struct FunctionVerb<H> {
     func: BoxedCallable<H>,
     _pd: PhantomData<fn(H)>,
@@ -31,6 +43,7 @@ impl<H> Clone for FunctionVerb<H> {
 }
 
 impl<H> FunctionVerb<H> {
+    /// Create a new verb using a closure/function
     pub fn new<F, T>(func: F) -> Self
     where
         F: CallableVerb<H, T>,
@@ -81,7 +94,11 @@ impl<H> BoxedCallable<H> {
     }
 }
 
+/// Closure/functions that can be used as a Verb
+///
+/// This trait is implemented for closures with up to 16 arguments. They all have to be [`VerbArgument`]s.
 pub trait CallableVerb<H, T>: Clone + 'static {
+    /// Call the underlying closure
     fn call(&self, harness: &mut H, node: &kdl::KdlNode) -> Result<(), TestErrorCase>;
 }
 
