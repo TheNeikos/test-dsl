@@ -1,6 +1,3 @@
-use std::sync::Arc;
-
-use miette::NamedSource;
 use test_dsl::condition::Condition;
 use test_dsl::verb::FunctionVerb;
 
@@ -8,10 +5,8 @@ use test_dsl::verb::FunctionVerb;
 fn check_invalid() {
     let ts = test_dsl::TestDsl::<()>::new();
 
-    let tc = ts.parse_document(NamedSource::new(
-        "test.kdl",
-        Arc::from(
-            r#"
+    let tc = ts.parse_testcase(
+        r#"
             testcase {
             }
             tetcase {
@@ -20,8 +15,7 @@ fn check_invalid() {
             }
             asd
         "#,
-        ),
-    ));
+    );
 
     insta::assert_snapshot!(format!("{:?}", miette::Error::new(tc.unwrap_err())));
 }
@@ -30,18 +24,15 @@ fn check_invalid() {
 fn check_unknown() {
     let ts = test_dsl::TestDsl::<()>::new();
 
-    let tc = ts.parse_document(NamedSource::new(
-        "test.kdl",
-        Arc::from(
-            r#"
+    let tc = ts.parse_testcase(
+        r#"
             testcase {
                 repeat 2 {
                     not_found
                 }
             }
         "#,
-        ),
-    ));
+    );
 
     insta::assert_snapshot!(format!("{:?}", miette::Error::new(tc.unwrap_err())));
 }
@@ -50,17 +41,14 @@ fn check_unknown() {
 fn check_missing_argument() {
     let ts = test_dsl::TestDsl::<()>::new();
 
-    let tc = ts.parse_document(NamedSource::new(
-        "test.kdl",
-        Arc::from(
-            r#"
+    let tc = ts.parse_testcase(
+        r#"
             testcase {
                 repeat {
                 }
             }
         "#,
-        ),
-    ));
+    );
 
     insta::assert_snapshot!(format!("{:?}", miette::Error::new(tc.unwrap_err())));
 }
@@ -69,17 +57,14 @@ fn check_missing_argument() {
 fn check_argument_wrong_type() {
     let ts = test_dsl::TestDsl::<()>::new();
 
-    let tc = ts.parse_document(NamedSource::new(
-        "test.kdl",
-        Arc::from(
-            r#"
+    let tc = ts.parse_testcase(
+        r#"
             testcase {
                 repeat hello {
                 }
             }
         "#,
-        ),
-    ));
+    );
 
     insta::assert_snapshot!(format!("{:?}", miette::Error::new(tc.unwrap_err())));
 }
@@ -97,32 +82,26 @@ fn check_argument_wrong_type_verb() {
     );
 
     let tc = ts
-        .parse_document(NamedSource::new(
-            "test.kdl",
-            Arc::from(
-                r#"
+        .parse_testcase(
+            r#"
             testcase {
                 foobar
             }
         "#,
-            ),
-        ))
+        )
         .unwrap()[0]
         .run(&mut ());
 
     insta::assert_snapshot!(format!("{:?}", miette::Error::new(tc.unwrap_err())));
 
     let tc = ts
-        .parse_document(NamedSource::new(
-            "test.kdl",
-            Arc::from(
-                r#"
+        .parse_testcase(
+            r#"
             testcase {
                 foobar not_a_number
             }
         "#,
-            ),
-        ))
+        )
         .unwrap()[0]
         .run(&mut ());
 
@@ -136,18 +115,15 @@ fn check_verb_panic_fail() {
     ts.add_verb("foobar", FunctionVerb::new(|_: &mut (), _: usize| panic!()));
 
     let tc = ts
-        .parse_document(NamedSource::new(
-            "test.kdl",
-            Arc::from(
-                r#"
+        .parse_testcase(
+            r#"
             testcase {
                 foobar 2 {
                     ofoo
                 }
             }
         "#,
-            ),
-        ))
+        )
         .unwrap()[0]
         .run(&mut ());
 
@@ -162,10 +138,8 @@ fn check_conditions() {
     ts.add_condition("is_false", Condition::new_now(|_h: &()| Ok(false)));
 
     let testcases = ts
-        .parse_document(NamedSource::new(
-            "test.kdl",
-            Arc::from(
-                r#"
+        .parse_testcase(
+            r#"
             testcase {
                 assert {
                     is_true
@@ -178,8 +152,7 @@ fn check_conditions() {
                 }
             }
         "#,
-            ),
-        ))
+        )
         .unwrap();
 
     // Check that its true
@@ -217,10 +190,8 @@ fn check_arithmetic() {
     );
 
     let testcases = ts
-        .parse_document(NamedSource::new(
-            "test.kdl",
-            Arc::from(
-                r#"
+        .parse_testcase(
+            r#"
             testcase {
                 add 21
                 mul 2
@@ -237,8 +208,7 @@ fn check_arithmetic() {
                 }
             }
         "#,
-            ),
-        ))
+        )
         .unwrap();
 
     // Check that its true

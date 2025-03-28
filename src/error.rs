@@ -1,8 +1,8 @@
 //! Common error definitions
-use std::sync::Arc;
-
 use miette::Diagnostic;
 use thiserror::Error;
+
+use crate::TestCaseInput;
 
 #[derive(Error, Diagnostic, Debug)]
 #[error("An error occurred while parsing testcases")]
@@ -12,7 +12,7 @@ pub struct TestParseError {
     pub(crate) errors: Vec<TestErrorCase>,
 
     #[source_code]
-    pub(crate) source_code: Option<miette::NamedSource<Arc<str>>>,
+    pub(crate) source_code: Option<TestCaseInput>,
 }
 
 impl From<kdl::KdlError> for TestParseError {

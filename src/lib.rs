@@ -75,11 +75,12 @@ impl<H: 'static> TestDsl<H> {
 
     /// Parse a given document as a [`KdlDocument`](kdl::KdlDocument) and generate a
     /// [`TestCase`](test_case::TestCase) out of it.
-    pub fn parse_document(
+    pub fn parse_testcase(
         &self,
-        input: miette::NamedSource<Arc<str>>,
+        input: impl Into<TestCaseInput>,
     ) -> Result<Vec<test_case::TestCase<H>>, error::TestParseError> {
-        let document = kdl::KdlDocument::parse(input.inner())?;
+        let input = input.into();
+        let document = kdl::KdlDocument::parse(input.content())?;
 
         let mut cases = vec![];
 
@@ -185,6 +186,67 @@ impl<H: 'static> TestDsl<H> {
                     node: verb_node.clone(),
                 }))
             }
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+/// The input to a [`TestCase`](test_case::TestCase)
+pub enum TestCaseInput {
+    /// Input that is not backed by a file
+    InMemory(Arc<str>),
+    /// Input that is backed by a file
+    FromFile {
+        /// The filepath of the file the contents are read from
+        filepath: Arc<str>,
+        /// The content of the file
+        contents: Arc<str>,
+    },
+}
+
+impl From<&str> for TestCaseInput {
+    fn from(value: &str) -> Self {
+        TestCaseInput::InMemory(Arc::from(value))
+    }
+}
+
+impl miette::SourceCode for TestCaseInput {
+    fn read_span<'a>(
+        &'a self,
+        span: &miette::SourceSpan,
+        context_lines_before: usize,
+        context_lines_after: usize,
+    ) -> Result<Box<dyn miette::SpanContents<'a> + 'a>, miette::MietteError> {
+        match self {
+            TestCaseInput::InMemory(content) => {
+                content.read_span(span, context_lines_before, context_lines_after)
+            }
+            TestCaseInput::FromFile {
+                filepath: filename,
+                contents,
+            } => {
+                let inner_contents =
+                    contents.read_span(span, context_lines_before, context_lines_after)?;
+                let mut contents = miette::MietteSpanContents::new_named(
+                    filename.to_string(),
+                    inner_contents.data(),
+                    *inner_contents.span(),
+                    inner_contents.line(),
+                    inner_contents.column(),
+                    inner_contents.line_count(),
+                );
+                contents = contents.with_language("kdl");
+                Ok(Box::new(contents))
+            }
+        }
+    }
+}
+
+impl TestCaseInput {
+    fn content(&self) -> &str {
+        match self {
+            TestCaseInput::InMemory(content) => content,
+            TestCaseInput::FromFile { contents, .. } => contents,
         }
     }
 }
@@ -316,10 +378,7 @@ impl<'p, H: 'static> TestVerbInstance<'p, H> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
     use std::sync::atomic::AtomicUsize;
-
-    use miette::NamedSource;
 
     use crate::TestDsl;
     use crate::verb::FunctionVerb;
@@ -351,18 +410,15 @@ mod tests {
         );
 
         let tc = ts
-            .parse_document(NamedSource::new(
-                "test.kdl",
-                Arc::from(
-                    r#"
+            .parse_testcase(
+                r#"
             testcase {
                 add_one
                 add_one
                 mul_two
             }
             "#,
-                ),
-            ))
+            )
             .unwrap();
 
         let mut ah = ArithmeticHarness {
@@ -398,10 +454,8 @@ mod tests {
         );
 
         let tc = ts
-            .parse_document(NamedSource::new(
-                "test.kdl",
-                Arc::from(
-                    r#"
+            .parse_testcase(
+                r#"
             testcase {
                 repeat 2 {
                     repeat 2 {
@@ -411,8 +465,7 @@ mod tests {
                 }
             }
             "#,
-                ),
-            ))
+            )
             .unwrap();
 
         let mut ah = ArithmeticHarness {
@@ -455,10 +508,8 @@ mod tests {
         );
 
         let tc = ts
-            .parse_document(NamedSource::new(
-                "test.kdl",
-                Arc::from(
-                    r#"
+            .parse_testcase(
+                r#"
             testcase {
                 repeat 2 {
                     repeat 2 {
@@ -470,8 +521,7 @@ mod tests {
                 }
             }
             "#,
-                ),
-            ))
+            )
             .unwrap();
 
         let mut ah = ArithmeticHarness {

@@ -1,18 +1,16 @@
 //! Individual testcases
 
-use std::sync::Arc;
-
 use miette::Diagnostic;
-use miette::NamedSource;
 use thiserror::Error;
 
 use super::TestVerbCreator;
+use crate::TestCaseInput;
 use crate::error::TestErrorCase;
 
 /// A singular test case
 pub struct TestCase<H> {
     pub(crate) creators: Vec<Box<dyn TestVerbCreator<H>>>,
-    pub(crate) source_code: NamedSource<Arc<str>>,
+    pub(crate) source_code: TestCaseInput,
 }
 
 impl<H> std::fmt::Debug for TestCase<H> {
@@ -29,11 +27,11 @@ pub struct TestCaseError {
     pub(crate) error: TestErrorCase,
 
     #[source_code]
-    pub(crate) source_code: miette::NamedSource<Arc<str>>,
+    pub(crate) source_code: TestCaseInput,
 }
 
 impl<H: 'static> TestCase<H> {
-    pub(crate) fn new(source_code: miette::NamedSource<Arc<str>>) -> Self {
+    pub(crate) fn new(source_code: TestCaseInput) -> Self {
         TestCase {
             creators: vec![],
             source_code,
