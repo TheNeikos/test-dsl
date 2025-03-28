@@ -85,7 +85,7 @@ testcases[1].run(&mut 0).unwrap();
 The following verbs come builtin:
 
 - `repeat <number> { .. }`: it allows for repetition of a given block. Used as such:
-    ```
+    ```kdl
     testcase {
         repeat 3 {
             print "Hello World"
@@ -96,7 +96,7 @@ The following verbs come builtin:
     ```
 
 - `group { .. }`: it allows to group verbs together. Used as such:
-    ```
+    ```kdl
     testcase {
         group {
             print "Hello"
@@ -107,7 +107,7 @@ The following verbs come builtin:
     NB: There is currently not much use to groups, but this may change in the future
 
 - `assert { .. }`: it allows to assert a list of conditions. Used as such:
-    ```
+    ```kdl
     testcase {
         send_message
         assert {
