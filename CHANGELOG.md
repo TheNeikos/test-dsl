@@ -2,6 +2,14 @@
 
 <!-- generated from cargo-changelog -->
 
+## v0.2.0
+
+### "Misc"
+
+#### Add documentation to all items
+
+#### Remove accidentally public TestCase::new method
+
 ## v0.1.0
 
 ### "Feature"
