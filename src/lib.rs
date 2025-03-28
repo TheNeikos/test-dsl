@@ -13,6 +13,7 @@ pub mod error;
 pub mod test_case;
 pub mod verb;
 pub use kdl;
+pub use miette;
 
 /// The main type of the crate
 ///
