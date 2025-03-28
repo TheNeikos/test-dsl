@@ -152,14 +152,14 @@ macro_rules! impl_callable {
                 $(
                     let arg = args.next().ok_or_else(|| TestErrorCase::MissingArgument {
                         parent: node.span(),
-                        missing: format!("This function takes {} arguments, you're missing the {}th argument.", total_count, running_count),
+                        missing: format!("This verb takes {} arguments, you're missing the {}th argument.", total_count, running_count),
                     })?;
 
                     let $ty = <$ty as VerbArgument>::from_value(arg).ok_or_else(|| {
                         TestErrorCase::WrongArgumentType {
                             parent: node.name().span(),
                             argument: arg.span(),
-                            expected: format!("This function takes a '{}' as its argument here.", <$ty as VerbArgument>::TYPE_NAME),
+                            expected: format!("This verb takes a '{}' as its argument here.", <$ty as VerbArgument>::TYPE_NAME),
                         }
                     })?;
                     running_count += 1;
@@ -169,13 +169,13 @@ macro_rules! impl_callable {
 
                 let arg = args.next().ok_or_else(|| TestErrorCase::MissingArgument {
                     parent: node.span(),
-                    missing: format!("This function takes {tc} arguments, you're missing the {tc}th argument.", tc = total_count),
+                    missing: format!("This verb takes {tc} arguments, you're missing the {tc}th argument.", tc = total_count),
                 })?;
                 let $last = <$last as VerbArgument>::from_value(arg).ok_or_else(|| {
                     TestErrorCase::WrongArgumentType {
                         parent: node.name().span(),
                         argument: arg.span(),
-                        expected: format!("This function takes a '{}' as its argument here.", <$last as VerbArgument>::TYPE_NAME),
+                        expected: format!("This verb takes a '{}' as its argument here.", <$last as VerbArgument>::TYPE_NAME),
                     }
                 })?;
 
