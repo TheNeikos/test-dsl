@@ -38,6 +38,16 @@ impl<H: 'static> TestCase<H> {
         }
     }
 
+    /// Get the path of the source of this test case.
+    ///
+    /// Returns `None` if the test case source came from in-memory.
+    pub fn path(&self) -> Option<&str> {
+        match self.source_code {
+            TestCaseInput::InMemory(_) => None,
+            TestCaseInput::FromFile { ref filepath, .. } => Some(&**filepath),
+        }
+    }
+
     /// Run the given test and report on its success
     pub fn run(&self, harness: &mut H) -> Result<(), TestCaseError> {
         self.creators
