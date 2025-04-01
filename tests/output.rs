@@ -1,3 +1,5 @@
+//! Test various error outputs
+
 use test_dsl::condition::Condition;
 use test_dsl::verb::FunctionVerb;
 

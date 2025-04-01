@@ -1,11 +1,17 @@
-#![deny(missing_docs)]
 #![doc = include_str!("../README.md")]
 
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::sync::Arc;
 
-use condition::TestCondition;
-use verb::TestVerb;
+use arguments::ParseArguments;
+use condition::ErasedCondition;
+use error::TestErrorCase;
+use verb::ErasedVerb;
+use verb::Verb;
+
+#[macro_use]
+mod macros;
 
 pub mod arguments;
 pub mod condition;
@@ -20,8 +26,8 @@ pub use miette;
 /// It contains all available verbs and conditions, and is used to derive
 /// [`TestCase`](test_case::TestCase)s.
 pub struct TestDsl<H> {
-    verbs: HashMap<String, Box<dyn TestVerb<H>>>,
-    conditions: HashMap<String, Box<dyn condition::TestCondition<H>>>,
+    verbs: HashMap<String, ErasedVerb<H>>,
+    conditions: HashMap<String, ErasedCondition<H>>,
 }
 
 impl<H> std::fmt::Debug for TestDsl<H> {
@@ -39,10 +45,16 @@ impl<H: 'static> Default for TestDsl<H> {
 impl<H: 'static> TestDsl<H> {
     /// Create an empty [`TestDsl`]
     pub fn new() -> Self {
-        TestDsl {
+        let mut dsl = TestDsl {
             verbs: HashMap::default(),
             conditions: HashMap::default(),
-        }
+        };
+
+        dsl.add_verb("repeat", Repeat);
+        dsl.add_verb("group", Group);
+        dsl.add_verb("assert", AssertConditions);
+
+        dsl
     }
 
     /// Add a single verb
@@ -50,8 +62,10 @@ impl<H: 'static> TestDsl<H> {
     /// The name is used as-is in your testcases, the arguments are up to each individual [`TestVerb`] implementation.
     ///
     /// See [`FunctionVerb`](verb::FunctionVerb) for an easy to use way of defining verbs.
-    pub fn add_verb(&mut self, name: impl AsRef<str>, verb: impl TestVerb<H>) {
-        let existing = self.verbs.insert(name.as_ref().to_string(), Box::new(verb));
+    pub fn add_verb(&mut self, name: impl AsRef<str>, verb: impl Verb<H>) {
+        let existing = self
+            .verbs
+            .insert(name.as_ref().to_string(), ErasedVerb::erase(verb));
         assert!(existing.is_none());
     }
 
@@ -68,7 +82,7 @@ impl<H: 'static> TestDsl<H> {
     ) {
         let existing = self
             .conditions
-            .insert(name.as_ref().to_string(), Box::new(condition));
+            .insert(name.as_ref().to_string(), ErasedCondition::erase(condition));
 
         assert!(existing.is_none());
     }
@@ -97,9 +111,9 @@ impl<H: 'static> TestDsl<H> {
 
             let mut testcase = test_case::TestCase::new(input.clone());
 
-            for verb_node in testcase_node.iter_children() {
-                match self.parse_verb(verb_node) {
-                    Ok(verb) => testcase.creators.push(verb),
+            for node in testcase_node.iter_children() {
+                match VerbInstance::with_test_dsl(self, node) {
+                    Ok(verb) => testcase.cases.push(verb),
                     Err(e) => errors.push(e),
                 }
             }
@@ -117,76 +131,34 @@ impl<H: 'static> TestDsl<H> {
         Ok(cases)
     }
 
-    fn parse_condition(
+    fn get_condition_for_node(
         &self,
         condition_node: &kdl::KdlNode,
-    ) -> Result<Box<dyn TestConditionCreator<H>>, error::TestErrorCase> {
-        self.conditions
+    ) -> Result<ErasedCondition<H>, error::TestErrorCase> {
+        let condition = self
+            .conditions
             .get(condition_node.name().value())
             .ok_or_else(|| error::TestErrorCase::UnknownCondition {
                 condition: condition_node.name().span(),
-            })
-            .map(|cond| {
-                Box::new(DirectCondition {
-                    condition: cond.clone(),
-                    node: condition_node.clone(),
-                }) as Box<_>
-            })
+            })?
+            .clone();
+
+        Ok(condition)
     }
 
-    fn parse_verb(
+    fn get_verb_for_node(
         &self,
         verb_node: &kdl::KdlNode,
-    ) -> Result<Box<dyn TestVerbCreator<H>>, error::TestErrorCase> {
-        match verb_node.name().value() {
-            "repeat" => {
-                let times = verb_node
-                    .get(0)
-                    .ok_or_else(|| error::TestErrorCase::MissingArgument {
-                        parent: verb_node.name().span(),
-                        missing: String::from("`repeat` takes one argument, the repetition count"),
-                    })?
-                    .as_integer()
-                    .ok_or_else(|| error::TestErrorCase::WrongArgumentType {
-                        parent: verb_node.name().span(),
-                        argument: verb_node.iter().next().unwrap().span(),
-                        expected: String::from("Expected an integer"),
-                    })? as usize;
+    ) -> Result<ErasedVerb<H>, error::TestErrorCase> {
+        let verb = self
+            .verbs
+            .get(verb_node.name().value())
+            .ok_or_else(|| error::TestErrorCase::UnknownVerb {
+                verb: verb_node.name().span(),
+            })?
+            .clone();
 
-                let block = verb_node
-                    .iter_children()
-                    .map(|node| self.parse_verb(node))
-                    .collect::<Result<_, _>>()?;
-
-                Ok(Box::new(Repeat { times, block }))
-            }
-            "group" => Ok(Box::new(Group {
-                block: verb_node
-                    .iter_children()
-                    .map(|n| self.parse_verb(n))
-                    .collect::<Result<_, _>>()?,
-            })),
-            "assert" => Ok(Box::new(AssertConditions {
-                conditions: verb_node
-                    .iter_children()
-                    .map(|node| self.parse_condition(node))
-                    .collect::<Result<_, _>>()?,
-            })),
-            name => {
-                let verb = self
-                    .verbs
-                    .get(name)
-                    .ok_or_else(|| error::TestErrorCase::UnknownVerb {
-                        verb: verb_node.name().span(),
-                    })?
-                    .clone();
-
-                Ok(Box::new(DirectVerb {
-                    verb,
-                    node: verb_node.clone(),
-                }))
-            }
-        }
+        Ok(verb)
     }
 }
 
@@ -251,128 +223,196 @@ impl TestCaseInput {
     }
 }
 
-trait TestVerbCreator<H> {
-    fn get_test_verbs(&self) -> Box<dyn Iterator<Item = TestVerbInstance<'_, H>> + '_>;
-}
+#[derive(Debug, Clone)]
+struct AssertConditions;
 
-trait TestConditionCreator<H> {
-    fn get_test_conditions(&self) -> Box<dyn Iterator<Item = TestConditionInstance<'_, H>> + '_>;
-}
+impl<H: 'static> Verb<H> for AssertConditions {
+    type Arguments = ConditionChildren<H, ((),)>;
+    fn run(&self, harness: &mut H, arguments: &Self::Arguments) -> Result<(), TestErrorCase> {
+        for child in arguments.children() {
+            child.run(harness)?;
+        }
 
-struct Group<H> {
-    block: Vec<Box<dyn TestVerbCreator<H>>>,
-}
-
-impl<H: 'static> TestVerbCreator<H> for Group<H> {
-    fn get_test_verbs(&self) -> Box<dyn Iterator<Item = TestVerbInstance<'_, H>> + '_> {
-        Box::new(self.block.iter().flat_map(|c| c.get_test_verbs()))
+        Ok(())
     }
 }
 
-struct Repeat<H> {
-    times: usize,
-    block: Vec<Box<dyn TestVerbCreator<H>>>,
-}
+#[derive(Debug, Clone)]
+struct Group;
 
-impl<H: 'static> TestVerbCreator<H> for Repeat<H> {
-    fn get_test_verbs(&self) -> Box<dyn Iterator<Item = TestVerbInstance<'_, H>> + '_> {
-        Box::new(
-            std::iter::repeat_with(|| self.block.iter().flat_map(|c| c.get_test_verbs()))
-                .take(self.times)
-                .flatten(),
-        )
+impl<H: 'static> Verb<H> for Group {
+    type Arguments = VerbChildren<H, ((),)>;
+    fn run(
+        &self,
+        harness: &mut H,
+        arguments: &Self::Arguments,
+    ) -> Result<(), error::TestErrorCase> {
+        for child in arguments.children() {
+            child.run(harness)?;
+        }
+
+        Ok(())
     }
 }
 
-struct DirectVerb<H> {
-    verb: Box<dyn TestVerb<H>>,
-    node: kdl::KdlNode,
-}
+#[derive(Debug, Clone)]
+struct Repeat;
 
-impl<H: 'static> TestVerbCreator<H> for DirectVerb<H> {
-    fn get_test_verbs(&self) -> Box<dyn Iterator<Item = TestVerbInstance<'_, H>> + '_> {
-        Box::new(std::iter::once(TestVerbInstance {
-            verb: self.verb.clone(),
-            node: &self.node,
-        }))
+impl<H: 'static> Verb<H> for Repeat {
+    type Arguments = VerbChildren<H, (usize,)>;
+    fn run(
+        &self,
+        harness: &mut H,
+        arguments: &Self::Arguments,
+    ) -> Result<(), error::TestErrorCase> {
+        let (times,) = *arguments.parameters();
+
+        for _ in 0..times {
+            for child in arguments.children() {
+                child.run(harness)?;
+            }
+        }
+
+        Ok(())
     }
 }
 
-struct DirectCondition<H> {
-    condition: Box<dyn TestCondition<H>>,
-    node: kdl::KdlNode,
+/// Parameters with a list of nodes that are conditions
+pub struct ConditionChildren<H, A> {
+    parameters: A,
+    children: Vec<ConditionInstance<H>>,
 }
 
-impl<H: 'static> TestConditionCreator<H> for DirectCondition<H> {
-    fn get_test_conditions(&self) -> Box<dyn Iterator<Item = TestConditionInstance<'_, H>> + '_> {
-        Box::new(std::iter::once(TestConditionInstance {
-            condition: self.condition.clone(),
-            node: &self.node,
-        }))
+impl<H, A> ConditionChildren<H, A> {
+    /// Get the parameters
+    pub fn parameters(&self) -> &A {
+        &self.parameters
+    }
+
+    /// Get the children nodes
+    pub fn children(&self) -> &[ConditionInstance<H>] {
+        &self.children
     }
 }
 
-struct AssertConditions<H> {
-    conditions: Vec<Box<dyn TestConditionCreator<H>>>,
-}
+impl<H: 'static, A: ParseArguments<H>> ParseArguments<H> for ConditionChildren<H, A> {
+    fn parse(test_dsl: &TestDsl<H>, node: &kdl::KdlNode) -> Result<Self, error::TestErrorCase> {
+        let arguments = A::parse(test_dsl, node)?;
 
-impl<H: 'static> TestVerbCreator<H> for AssertConditions<H> {
-    fn get_test_verbs(&self) -> Box<dyn Iterator<Item = TestVerbInstance<'_, H>> + '_> {
-        Box::new(
-            self.conditions
-                .iter()
-                .flat_map(|cond| cond.get_test_conditions())
-                .map(|cond| TestVerbInstance {
-                    node: cond.node,
-                    verb: Box::new(AssertVerb {
-                        condition: cond.condition,
-                    }),
-                }),
-        )
+        let children = node
+            .iter_children()
+            .map(|node| ConditionInstance::with_test_dsl(test_dsl, node))
+            .collect::<Result<_, _>>()?;
+
+        Ok(ConditionChildren {
+            parameters: arguments,
+            children,
+        })
     }
 }
 
-struct AssertVerb<H> {
-    condition: Box<dyn TestCondition<H>>,
+/// Parameters with a list of nodes that are verbs
+pub struct VerbChildren<H, A> {
+    parameters: A,
+    children: Vec<VerbInstance<H>>,
 }
 
-impl<H: 'static> TestVerb<H> for AssertVerb<H> {
-    fn run(&self, harness: &mut H, node: &kdl::KdlNode) -> Result<(), error::TestErrorCase> {
-        self.condition.check_now(harness, node).and_then(|res| {
-            res.then_some(())
-                .ok_or_else(|| error::TestErrorCase::Error {
-                    error: miette::miette!("Assert failed"),
-                    label: node.span(),
-                })
+impl<H, A> VerbChildren<H, A> {
+    /// Get the parameters
+    pub fn parameters(&self) -> &A {
+        &self.parameters
+    }
+
+    /// Get the children
+    pub fn children(&self) -> &[VerbInstance<H>] {
+        &self.children
+    }
+}
+
+impl<H: 'static, A: ParseArguments<H>> ParseArguments<H> for VerbChildren<H, A> {
+    fn parse(test_dsl: &TestDsl<H>, node: &kdl::KdlNode) -> Result<Self, error::TestErrorCase> {
+        let arguments = A::parse(test_dsl, node)?;
+
+        let children = node
+            .iter_children()
+            .map(|node| VerbInstance::with_test_dsl(test_dsl, node))
+            .collect::<Result<_, _>>()?;
+
+        Ok(VerbChildren {
+            parameters: arguments,
+            children,
+        })
+    }
+}
+
+/// An instance of a [`TestCondition`](condition::TestCondition)
+pub struct ConditionInstance<H> {
+    _pd: PhantomData<fn(H)>,
+    condition: ErasedCondition<H>,
+    arguments: Box<dyn std::any::Any>,
+}
+
+impl<H: 'static> ConditionInstance<H> {
+    /// Create a new instance with the given node and [`TestDsl`]
+    pub fn with_test_dsl(
+        test_dsl: &TestDsl<H>,
+        node: &kdl::KdlNode,
+    ) -> Result<Self, TestErrorCase> {
+        let condition = test_dsl.get_condition_for_node(node)?;
+
+        let arguments = condition.parse_args(test_dsl, node)?;
+
+        Ok(ConditionInstance {
+            _pd: PhantomData,
+            condition,
+            arguments,
         })
     }
 
-    fn clone_box(&self) -> Box<dyn TestVerb<H>> {
-        Box::new(self.clone())
+    /// Run the condition
+    ///
+    /// This returns an error if:
+    /// - The condition returns [`Ok(false)`](Ok)
+    /// - It returns an [`Err`]
+    /// - It [`panic`]s
+    pub fn run(&self, harness: &mut H) -> Result<(), TestErrorCase> {
+        self.condition
+            .check_now(harness, &*self.arguments)
+            .and_then(|res| res.then_some(()).ok_or(TestErrorCase::ConditionFailed))
     }
 }
 
-impl<H: 'static> Clone for AssertVerb<H> {
-    fn clone(&self) -> Self {
-        AssertVerb {
-            condition: self.condition.clone(),
-        }
+/// An instance of a [`Verb`]
+pub struct VerbInstance<H> {
+    _pd: PhantomData<fn(H)>,
+    verb: ErasedVerb<H>,
+    arguments: Box<dyn std::any::Any>,
+}
+
+impl<H: 'static> VerbInstance<H> {
+    /// Create a new instance with the given node and [`TestDsl`]
+    pub fn with_test_dsl(
+        test_dsl: &TestDsl<H>,
+        node: &kdl::KdlNode,
+    ) -> Result<Self, TestErrorCase> {
+        let verb = test_dsl.get_verb_for_node(node)?;
+
+        let arguments = verb.parse_args(test_dsl, node)?;
+
+        Ok(VerbInstance {
+            _pd: PhantomData,
+            verb,
+            arguments,
+        })
     }
-}
 
-struct TestConditionInstance<'p, H> {
-    condition: Box<dyn TestCondition<H>>,
-    node: &'p kdl::KdlNode,
-}
-
-struct TestVerbInstance<'p, H> {
-    verb: Box<dyn TestVerb<H>>,
-    node: &'p kdl::KdlNode,
-}
-
-impl<'p, H: 'static> TestVerbInstance<'p, H> {
-    fn run<'h>(&'p self, harness: &'h mut H) -> Result<(), error::TestErrorCase> {
-        self.verb.run(harness, self.node)
+    /// Run the verb
+    ///
+    /// This returns an error if:
+    /// - It returns an [`Err`]
+    /// - It [`panic`]s
+    pub fn run(&self, harness: &mut H) -> Result<(), TestErrorCase> {
+        self.verb.run(harness, &*self.arguments)
     }
 }
 

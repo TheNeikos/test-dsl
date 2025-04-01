@@ -110,9 +110,15 @@ pub enum TestErrorCase {
         #[diagnostic_source]
         /// The error as it was given
         error: miette::Error,
-
-        #[label("in this node")]
-        /// Which node cause the error
-        label: miette::SourceSpan,
     },
+    /// The condition is not valid in this position
+    #[error("The condition is not valid in this position")]
+    InvalidCondition {
+        /// The inner error
+        #[diagnostic_source]
+        error: miette::Error,
+    },
+    /// The evaluated condition failed
+    #[error("The given condition failed")]
+    ConditionFailed,
 }

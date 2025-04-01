@@ -3,13 +3,13 @@
 use miette::Diagnostic;
 use thiserror::Error;
 
-use super::TestVerbCreator;
 use crate::TestCaseInput;
+use crate::VerbInstance;
 use crate::error::TestErrorCase;
 
 /// A singular test case
 pub struct TestCase<H> {
-    pub(crate) creators: Vec<Box<dyn TestVerbCreator<H>>>,
+    pub(crate) cases: Vec<VerbInstance<H>>,
     pub(crate) source_code: TestCaseInput,
 }
 
@@ -33,7 +33,7 @@ pub struct TestCaseError {
 impl<H: 'static> TestCase<H> {
     pub(crate) fn new(source_code: TestCaseInput) -> Self {
         TestCase {
-            creators: vec![],
+            cases: vec![],
             source_code,
         }
     }
@@ -50,14 +50,9 @@ impl<H: 'static> TestCase<H> {
 
     /// Run the given test and report on its success
     pub fn run(&self, harness: &mut H) -> Result<(), TestCaseError> {
-        self.creators
+        self.cases
             .iter()
-            .flat_map(|c| {
-                c.get_test_verbs()
-                    .map(|verb| verb.run(harness))
-                    .collect::<Vec<_>>()
-            })
-            .collect::<Result<(), _>>()
+            .try_for_each(|verb| verb.run(harness))
             .map_err(|error| TestCaseError {
                 error,
                 source_code: self.source_code.clone(),

@@ -6,34 +6,96 @@
 use std::any::Any;
 use std::marker::PhantomData;
 
+use crate::TestDsl;
+use crate::arguments::ParseArguments;
 use crate::arguments::VerbArgument;
 use crate::error::TestErrorCase;
 
 /// A verb is anything that 'does' things in a [`TestCase`](crate::test_case::TestCase)
-pub trait TestVerb<H>: 'static {
-    /// Run the verb, and do its thing
-    fn run(&self, harness: &mut H, node: &kdl::KdlNode) -> Result<(), TestErrorCase>;
+pub trait Verb<H>: std::fmt::Debug + Clone + 'static {
+    /// Arguments to this verb
+    type Arguments: ParseArguments<H>;
 
-    /// Clone the verb
-    fn clone_box(&self) -> Box<dyn TestVerb<H>>;
+    /// Run the verb, and do its thing
+    fn run(&self, harness: &mut H, arguments: &Self::Arguments) -> Result<(), TestErrorCase>;
 }
 
-impl<H: 'static> Clone for Box<dyn TestVerb<H>> {
+pub(crate) struct ErasedVerb<H> {
+    verb: Box<dyn Any>,
+    fn_parse_args: fn(&crate::TestDsl<H>, &kdl::KdlNode) -> Result<Box<dyn Any>, TestErrorCase>,
+    fn_run: fn(&dyn Any, &mut H, &dyn Any) -> Result<(), TestErrorCase>,
+    fn_clone: fn(&dyn Any) -> Box<dyn Any>,
+}
+
+impl<H> Clone for ErasedVerb<H> {
     fn clone(&self) -> Self {
-        let this: &dyn TestVerb<H> = &**self;
-        this.clone_box()
+        Self {
+            verb: (self.fn_clone)(&*self.verb),
+            fn_parse_args: self.fn_parse_args,
+            fn_run: self.fn_run,
+            fn_clone: self.fn_clone,
+        }
+    }
+}
+
+impl<H> ErasedVerb<H> {
+    pub(crate) fn erase<V>(verb: V) -> Self
+    where
+        V: Verb<H>,
+    {
+        ErasedVerb {
+            verb: Box::new(verb),
+            fn_parse_args: |test_dsl, node| {
+                <V::Arguments as ParseArguments<H>>::parse(test_dsl, node).map(|a| {
+                    let args = Box::new(a);
+                    args as _
+                })
+            },
+            fn_run: |this, harness, arguments| {
+                let this: &V = this.downcast_ref().unwrap();
+                let arguments: &V::Arguments = arguments.downcast_ref().unwrap();
+
+                this.run(harness, arguments)
+            },
+            fn_clone: |this| {
+                let this: &V = this.downcast_ref().unwrap();
+
+                Box::new(this.clone())
+            },
+        }
+    }
+
+    pub(crate) fn parse_args(
+        &self,
+        test_dsl: &TestDsl<H>,
+        node: &kdl::KdlNode,
+    ) -> Result<Box<dyn Any>, TestErrorCase> {
+        (self.fn_parse_args)(test_dsl, node)
+    }
+
+    pub(crate) fn run(&self, harness: &mut H, arguments: &dyn Any) -> Result<(), TestErrorCase> {
+        (self.fn_run)(&*self.verb, harness, arguments)
     }
 }
 
 /// A verb defined through a closure/function
 ///
 /// See the [`CallableVerb`] trait for what can be used
-pub struct FunctionVerb<H> {
-    func: BoxedCallable<H>,
-    _pd: PhantomData<fn(H)>,
+pub struct FunctionVerb<H, T> {
+    func: BoxedCallable<H, T>,
+    _pd: PhantomData<fn(H, T)>,
 }
 
-impl<H> Clone for FunctionVerb<H> {
+impl<H, T> std::fmt::Debug for FunctionVerb<H, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FunctionVerb")
+            .field("func", &self.func)
+            .field("_pd", &self._pd)
+            .finish()
+    }
+}
+
+impl<H, T> Clone for FunctionVerb<H, T> {
     fn clone(&self) -> Self {
         Self {
             func: self.func.clone(),
@@ -42,9 +104,9 @@ impl<H> Clone for FunctionVerb<H> {
     }
 }
 
-impl<H> FunctionVerb<H> {
+impl<H, T> FunctionVerb<H, T> {
     /// Create a new verb using a closure/function
-    pub fn new<F, T>(func: F) -> Self
+    pub fn new<F>(func: F) -> Self
     where
         F: CallableVerb<H, T>,
     {
@@ -55,13 +117,23 @@ impl<H> FunctionVerb<H> {
     }
 }
 
-struct BoxedCallable<H> {
+struct BoxedCallable<H, T> {
     callable: Box<dyn Any>,
-    call_fn: fn(&dyn Any, &mut H, &kdl::KdlNode) -> Result<(), TestErrorCase>,
+    call_fn: fn(&dyn Any, &mut H, &T) -> miette::Result<()>,
     clone_fn: fn(&dyn Any) -> Box<dyn Any>,
 }
 
-impl<H> Clone for BoxedCallable<H> {
+impl<H, T> std::fmt::Debug for BoxedCallable<H, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BoxedCallable")
+            .field("callable", &self.callable)
+            .field("call_fn", &self.call_fn)
+            .field("clone_fn", &self.clone_fn)
+            .finish()
+    }
+}
+
+impl<H, T> Clone for BoxedCallable<H, T> {
     fn clone(&self) -> Self {
         BoxedCallable {
             callable: (self.clone_fn)(&*self.callable),
@@ -71,8 +143,8 @@ impl<H> Clone for BoxedCallable<H> {
     }
 }
 
-impl<H> BoxedCallable<H> {
-    fn new<F, T>(callable: F) -> Self
+impl<H, T> BoxedCallable<H, T> {
+    fn new<F>(callable: F) -> Self
     where
         F: CallableVerb<H, T>,
     {
@@ -89,8 +161,8 @@ impl<H> BoxedCallable<H> {
         }
     }
 
-    fn call(&self, harness: &mut H, node: &kdl::KdlNode) -> Result<(), TestErrorCase> {
-        (self.call_fn)(&*self.callable, harness, node)
+    fn call(&self, harness: &mut H, args: &T) -> miette::Result<()> {
+        (self.call_fn)(&*self.callable, harness, args)
     }
 }
 
@@ -99,7 +171,7 @@ impl<H> BoxedCallable<H> {
 /// This trait is implemented for closures with up to 16 arguments. They all have to be [`VerbArgument`]s.
 pub trait CallableVerb<H, T>: Clone + 'static {
     /// Call the underlying closure
-    fn call(&self, harness: &mut H, node: &kdl::KdlNode) -> Result<(), TestErrorCase>;
+    fn call(&self, harness: &mut H, node: &T) -> miette::Result<()>;
 }
 
 impl<H, F> CallableVerb<H, ((),)> for F
@@ -107,34 +179,9 @@ where
     F: Fn(&mut H) -> miette::Result<()>,
     F: Clone + 'static,
 {
-    fn call(&self, harness: &mut H, node: &kdl::KdlNode) -> Result<(), TestErrorCase> {
-        self(harness).map_err(|error| TestErrorCase::Error {
-            error,
-            label: node.span(),
-        })
+    fn call(&self, harness: &mut H, _node: &((),)) -> miette::Result<()> {
+        self(harness)
     }
-}
-
-#[rustfmt::skip]
-macro_rules! all_the_tuples {
-    ($name:ident) => {
-        $name!([], T1);
-        $name!([T1], T2);
-        $name!([T1, T2], T3);
-        $name!([T1, T2, T3], T4);
-        $name!([T1, T2, T3, T4], T5);
-        $name!([T1, T2, T3, T4, T5], T6);
-        $name!([T1, T2, T3, T4, T5, T6], T7);
-        $name!([T1, T2, T3, T4, T5, T6, T7], T8);
-        $name!([T1, T2, T3, T4, T5, T6, T7, T8], T9);
-        $name!([T1, T2, T3, T4, T5, T6, T7, T8, T9], T10);
-        $name!([T1, T2, T3, T4, T5, T6, T7, T8, T9, T10], T11);
-        $name!([T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11], T12);
-        $name!([T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12], T13);
-        $name!([T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13], T14);
-        $name!([T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14], T15);
-        $name!([T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15], T16);
-    };
 }
 
 macro_rules! impl_callable {
@@ -149,57 +196,9 @@ macro_rules! impl_callable {
                 $( $ty: VerbArgument, )*
                 $last: VerbArgument,
         {
-            fn call(&self, harness: &mut H, node: &kdl::KdlNode) -> Result<(), TestErrorCase> {
-                let mut args = node.iter();
-
-                let total_count = 1
-                    $(
-                        + {
-                            const _: () = {
-                                #[allow(unused)]
-                                let $ty = ();
-                            };
-                            1
-                        }
-
-                    )*;
-
-                let mut running_count = 1;
-
-                $(
-                    let arg = args.next().ok_or_else(|| TestErrorCase::MissingArgument {
-                        parent: node.span(),
-                        missing: format!("This verb takes {} arguments, you're missing the {}th argument.", total_count, running_count),
-                    })?;
-
-                    let $ty = <$ty as VerbArgument>::from_value(arg).ok_or_else(|| {
-                        TestErrorCase::WrongArgumentType {
-                            parent: node.name().span(),
-                            argument: arg.span(),
-                            expected: format!("This verb takes a '{}' as its argument here.", <$ty as VerbArgument>::TYPE_NAME),
-                        }
-                    })?;
-                    running_count += 1;
-                )*
-
-                let _ = running_count;
-
-                let arg = args.next().ok_or_else(|| TestErrorCase::MissingArgument {
-                    parent: node.span(),
-                    missing: format!("This verb takes {tc} arguments, you're missing the {tc}th argument.", tc = total_count),
-                })?;
-                let $last = <$last as VerbArgument>::from_value(arg).ok_or_else(|| {
-                    TestErrorCase::WrongArgumentType {
-                        parent: node.name().span(),
-                        argument: arg.span(),
-                        expected: format!("This verb takes a '{}' as its argument here.", <$last as VerbArgument>::TYPE_NAME),
-                    }
-                })?;
-
-                self(harness, $($ty,)* $last,).map_err(|error| TestErrorCase::Error {
-                    error,
-                    label: node.span()
-                })
+            fn call(&self, harness: &mut H, arguments: &($($ty,)* $last,)) -> miette::Result<()> {
+                let ($($ty,)* $last,) = arguments.clone();
+                self(harness, $($ty,)* $last,)
             }
         }
     };
@@ -207,36 +206,20 @@ macro_rules! impl_callable {
 
 all_the_tuples!(impl_callable);
 
-impl<H: 'static> TestVerb<H> for FunctionVerb<H> {
-    fn run(&self, harness: &mut H, node: &kdl::KdlNode) -> Result<(), TestErrorCase> {
-        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            self.func.call(harness, node)
-        }));
+/// Define a verb with a closure
+#[macro_export]
+macro_rules! function_verb {
+    () => {};
+}
 
-        match res {
-            Ok(res) => res,
-            Err(error) => {
-                let mut message = "Something went wrong".to_string();
-
-                let payload = error;
-
-                if let Some(msg) = payload.downcast_ref::<&str>() {
-                    message = msg.to_string();
-                }
-
-                if let Some(msg) = payload.downcast_ref::<String>() {
-                    message.clone_from(msg);
-                }
-
-                Err(TestErrorCase::Panic {
-                    error: miette::Error::msg(message),
-                    label: node.span(),
-                })
-            }
-        }
-    }
-
-    fn clone_box(&self) -> Box<dyn TestVerb<H>> {
-        Box::new(self.clone())
+impl<T, H: 'static> Verb<H> for FunctionVerb<H, T>
+where
+    T: ParseArguments<H>,
+{
+    type Arguments = T;
+    fn run(&self, harness: &mut H, args: &T) -> Result<(), TestErrorCase> {
+        self.func
+            .call(harness, args)
+            .map_err(|error| TestErrorCase::Error { error })
     }
 }

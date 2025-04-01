@@ -9,6 +9,12 @@ keywords = ["testing", "dsl", "kdl"]
 categories = ["development-tools::testing"]
 resolver = "2"
 
+[lints.clippy]
+type_complexity = "allow"
+
+[lints.rust]
+missing_docs = "warn"
+
 [dependencies]
 kdl = "6.3.4"
 miette = "7.5.0"
