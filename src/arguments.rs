@@ -1,6 +1,9 @@
 //! Traits related to arguments of verbs and conditions
 
+use crate::ConditionInstance;
 use crate::TestDsl;
+use crate::VerbInstance;
+use crate::error;
 use crate::error::TestErrorCase;
 
 /// Types that can be parsed from a node as arguments
@@ -9,8 +12,8 @@ use crate::error::TestErrorCase;
 pub trait ParseArguments<H>: std::fmt::Debug + Clone + Sized + 'static {
     /// Do the parsing and return an instance
     ///
-    /// See [`VerbInstance`](crate::VerbInstance) and
-    /// [`ConditionInstance`](crate::ConditionInstance) for how to get an instance from a node.
+    /// See [`VerbInstance`] and
+    /// [`ConditionInstance`] for how to get an instance from a node.
     fn parse(test_dsl: &TestDsl<H>, node: &kdl::KdlNode) -> Result<Self, TestErrorCase>;
 }
 
@@ -145,5 +148,109 @@ impl VerbArgument for f64 {
 impl VerbArgument for bool {
     fn from_value(value: &kdl::KdlEntry) -> Option<Self> {
         value.value().as_bool()
+    }
+}
+
+/// Parameters with a list of nodes that are conditions
+pub struct ConditionChildren<H, A> {
+    parameters: A,
+    children: Vec<ConditionInstance<H>>,
+}
+
+impl<H, A: std::fmt::Debug> std::fmt::Debug for ConditionChildren<H, A> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ConditionChildren")
+            .field("parameters", &self.parameters)
+            .field("children", &self.children)
+            .finish()
+    }
+}
+
+impl<H: 'static, A: Clone> Clone for ConditionChildren<H, A> {
+    fn clone(&self) -> Self {
+        Self {
+            parameters: self.parameters.clone(),
+            children: self.children.clone(),
+        }
+    }
+}
+
+impl<H, A> ConditionChildren<H, A> {
+    /// Get the parameters
+    pub fn parameters(&self) -> &A {
+        &self.parameters
+    }
+
+    /// Get the children nodes
+    pub fn children(&self) -> &[ConditionInstance<H>] {
+        &self.children
+    }
+}
+
+impl<H: 'static, A: ParseArguments<H>> ParseArguments<H> for ConditionChildren<H, A> {
+    fn parse(test_dsl: &TestDsl<H>, node: &kdl::KdlNode) -> Result<Self, error::TestErrorCase> {
+        let arguments = A::parse(test_dsl, node)?;
+
+        let children = node
+            .iter_children()
+            .map(|node| ConditionInstance::with_test_dsl(test_dsl, node))
+            .collect::<Result<_, _>>()?;
+
+        Ok(ConditionChildren {
+            parameters: arguments,
+            children,
+        })
+    }
+}
+
+/// Parameters with a list of nodes that are verbs
+pub struct VerbChildren<H, A> {
+    parameters: A,
+    children: Vec<VerbInstance<H>>,
+}
+
+impl<H, A: std::fmt::Debug> std::fmt::Debug for VerbChildren<H, A> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("VerbChildren")
+            .field("parameters", &self.parameters)
+            .field("children", &self.children)
+            .finish()
+    }
+}
+
+impl<H: 'static, A: Clone> Clone for VerbChildren<H, A> {
+    fn clone(&self) -> Self {
+        Self {
+            parameters: self.parameters.clone(),
+            children: self.children.clone(),
+        }
+    }
+}
+
+impl<H, A> VerbChildren<H, A> {
+    /// Get the parameters
+    pub fn parameters(&self) -> &A {
+        &self.parameters
+    }
+
+    /// Get the children
+    pub fn children(&self) -> &[VerbInstance<H>] {
+        &self.children
+    }
+}
+
+impl<H: 'static, A: ParseArguments<H>> ParseArguments<H> for VerbChildren<H, A> {
+    fn parse(test_dsl: &TestDsl<H>, node: &kdl::KdlNode) -> Result<Self, error::TestErrorCase> {
+        let arguments = A::parse(test_dsl, node)?;
+
+        let children = node
+            .iter_children()
+            .map(|node| VerbInstance::with_test_dsl(test_dsl, node))
+            .collect::<Result<_, _>>()?;
+
+        Ok(VerbChildren {
+            parameters: arguments,
+            children,
+        })
     }
 }
