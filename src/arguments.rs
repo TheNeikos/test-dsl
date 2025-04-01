@@ -135,3 +135,15 @@ impl VerbArgument for usize {
         value.value().as_integer().map(|i| i as usize)
     }
 }
+
+impl VerbArgument for f64 {
+    fn from_value(value: &kdl::KdlEntry) -> Option<Self> {
+        value.value().as_float()
+    }
+}
+
+impl VerbArgument for bool {
+    fn from_value(value: &kdl::KdlEntry) -> Option<Self> {
+        value.value().as_bool()
+    }
+}
