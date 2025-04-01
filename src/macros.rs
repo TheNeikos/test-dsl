@@ -49,7 +49,7 @@ macro_rules! named_parameters {
 
 /// Define a verb using a closure, where the argument names are used as the key names
 #[macro_export]
-macro_rules! named_verb {
+macro_rules! named_parameters_verb {
     (@define_args $struct_name:ident => { |$_name:ident : $_ty:ty $(, $name:ident : $kind:ty)* $(,)?| $rest:block }) => {
         #[derive(Debug, Clone)]
         struct $struct_name {
@@ -79,7 +79,7 @@ macro_rules! named_verb {
         $verb($harness, $($name),*)
     };
 
-    (@call $struct_name:ident => { |$_name:ident : &mut $ty:ty $(, $($_:tt)*)? } => $($rest:tt)*) => {{
+    (@call $struct_name:ident => { $($rest:tt)* } => { |$_name:ident : &mut $ty:ty $(,$_:ident : $__:ty)*| $_rest:block }) => {{
         #[derive(Clone)]
         struct __Caller;
 
@@ -88,37 +88,33 @@ macro_rules! named_verb {
 
                 let verb = $($rest)*;
 
-                $crate::named_verb!(@extract node => $($rest)*);
+                $crate::named_parameters_verb!(@extract node => $($rest)*);
 
-                $crate::named_verb!(@verb_params verb harness => $($rest)*)
+                $crate::named_parameters_verb!(@verb_params verb harness => $($rest)*)
             }
         }
 
         __Caller
     }};
 
-    (@define $name:ident => $($input:tt)*) => {{
+    ($($input:tt)*) => {{
+        let verb = $crate::verb::FunctionVerb::<_, __NamedVerb>::new(
+            $crate::named_parameters_verb!(@call __NamedVerb => { $($input)* } => { $($input)* })
+        );
 
-        $crate::named_verb!(@define_args $name => { $($input)* });
+        $crate::named_parameters_verb!(@define_args __NamedVerb => { $($input)* });
 
-        impl<H> $crate::arguments::ParseArguments<H> for $name {
+        impl<H> $crate::arguments::ParseArguments<H> for __NamedVerb {
             fn parse(_: &$crate::TestDsl<H>, node: &$crate::kdl::KdlNode) -> Result<Self, $crate::error::TestErrorCase> {
 
-                $crate::named_verb!(@parse_args node => $($input)*);
+                $crate::named_parameters_verb!(@parse_args node => $($input)*);
 
-                Ok($crate::named_verb!(@get_args $name => $($input)*))
+                Ok($crate::named_parameters_verb!(@get_args __NamedVerb => $($input)*))
             }
         }
 
-        $crate::verb::FunctionVerb::<_, $name>::new(
-
-                $crate::named_verb!(@call $name => { $($input)* } => $($input)*)
-        )
+        verb
     }};
-
-    ($($input:tt)*) => {
-        $crate::named_verb!(@define __NamedArgs => $($input)*)
-    };
 }
 
 #[cfg(test)]
@@ -149,7 +145,7 @@ mod tests {
 
         dsl.add_verb(
             "test",
-            named_verb!(|_harness: &mut (), name: String, pi: usize| {
+            named_parameters_verb!(|_harness: &mut (), name: String, pi: usize| {
                 println!("{name} = {pi}");
                 Ok(())
             }),
