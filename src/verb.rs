@@ -17,13 +17,13 @@ pub trait Verb<H>: std::fmt::Debug + Clone + 'static {
     type Arguments: ParseArguments<H>;
 
     /// Run the verb, and do its thing
-    fn run(&self, harness: &mut H, arguments: &Self::Arguments) -> Result<(), TestErrorCase>;
+    fn run(&self, harness: &mut H, arguments: &Self::Arguments) -> miette::Result<()>;
 }
 
 pub(crate) struct ErasedVerb<H> {
     verb: Box<dyn Any>,
     fn_parse_args: fn(&crate::TestDsl<H>, &kdl::KdlNode) -> Result<Box<dyn Any>, TestErrorCase>,
-    fn_run: fn(&dyn Any, &mut H, &dyn Any) -> Result<(), TestErrorCase>,
+    fn_run: fn(&dyn Any, &mut H, &dyn Any) -> miette::Result<()>,
     fn_clone: fn(&dyn Any) -> Box<dyn Any>,
 }
 
@@ -73,7 +73,7 @@ impl<H> ErasedVerb<H> {
         (self.fn_parse_args)(test_dsl, node)
     }
 
-    pub(crate) fn run(&self, harness: &mut H, arguments: &dyn Any) -> Result<(), TestErrorCase> {
+    pub(crate) fn run(&self, harness: &mut H, arguments: &dyn Any) -> miette::Result<()> {
         (self.fn_run)(&*self.verb, harness, arguments)
     }
 }
@@ -217,9 +217,7 @@ where
     T: ParseArguments<H>,
 {
     type Arguments = T;
-    fn run(&self, harness: &mut H, args: &T) -> Result<(), TestErrorCase> {
-        self.func
-            .call(harness, args)
-            .map_err(|error| TestErrorCase::Error { error })
+    fn run(&self, harness: &mut H, args: &T) -> miette::Result<()> {
+        self.func.call(harness, args)
     }
 }

@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use arguments::ParseArguments;
 use condition::ErasedCondition;
+use error::TestError;
 use error::TestErrorCase;
 use verb::ErasedVerb;
 use verb::Verb;
@@ -228,7 +229,7 @@ struct AssertConditions;
 
 impl<H: 'static> Verb<H> for AssertConditions {
     type Arguments = ConditionChildren<H, ((),)>;
-    fn run(&self, harness: &mut H, arguments: &Self::Arguments) -> Result<(), TestErrorCase> {
+    fn run(&self, harness: &mut H, arguments: &Self::Arguments) -> miette::Result<()> {
         for child in arguments.children() {
             child.run(harness)?;
         }
@@ -242,11 +243,7 @@ struct Group;
 
 impl<H: 'static> Verb<H> for Group {
     type Arguments = VerbChildren<H, ((),)>;
-    fn run(
-        &self,
-        harness: &mut H,
-        arguments: &Self::Arguments,
-    ) -> Result<(), error::TestErrorCase> {
+    fn run(&self, harness: &mut H, arguments: &Self::Arguments) -> miette::Result<()> {
         for child in arguments.children() {
             child.run(harness)?;
         }
@@ -260,11 +257,7 @@ struct Repeat;
 
 impl<H: 'static> Verb<H> for Repeat {
     type Arguments = VerbChildren<H, (usize,)>;
-    fn run(
-        &self,
-        harness: &mut H,
-        arguments: &Self::Arguments,
-    ) -> Result<(), error::TestErrorCase> {
+    fn run(&self, harness: &mut H, arguments: &Self::Arguments) -> miette::Result<()> {
         let (times,) = *arguments.parameters();
 
         for _ in 0..times {
@@ -350,6 +343,7 @@ pub struct ConditionInstance<H> {
     _pd: PhantomData<fn(H)>,
     condition: ErasedCondition<H>,
     arguments: Box<dyn std::any::Any>,
+    node: kdl::KdlNode,
 }
 
 impl<H: 'static> ConditionInstance<H> {
@@ -366,6 +360,7 @@ impl<H: 'static> ConditionInstance<H> {
             _pd: PhantomData,
             condition,
             arguments,
+            node: node.clone(),
         })
     }
 
@@ -375,10 +370,37 @@ impl<H: 'static> ConditionInstance<H> {
     /// - The condition returns [`Ok(false)`](Ok)
     /// - It returns an [`Err`]
     /// - It [`panic`]s
-    pub fn run(&self, harness: &mut H) -> Result<(), TestErrorCase> {
-        self.condition
-            .check_now(harness, &*self.arguments)
-            .and_then(|res| res.then_some(()).ok_or(TestErrorCase::ConditionFailed))
+    pub fn run(&self, harness: &mut H) -> Result<(), TestError> {
+        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.condition.check_now(harness, &*self.arguments)
+        }));
+
+        match res {
+            Ok(Ok(true)) => Ok(()),
+            Ok(Ok(false)) => Err(TestError::ConditionFailed {
+                span: self.node.span(),
+            }),
+            Ok(Err(error)) => Err(TestError::Error {
+                error,
+                span: self.node.span(),
+            }),
+            Err(payload) => {
+                let mut message = "Something went wrong".to_string();
+
+                if let Some(msg) = payload.downcast_ref::<&str>() {
+                    message = msg.to_string();
+                }
+
+                if let Some(msg) = payload.downcast_ref::<String>() {
+                    message.clone_from(msg);
+                }
+
+                Err(TestError::Panic {
+                    error: miette::Report::msg(message),
+                    span: self.node.span(),
+                })
+            }
+        }
     }
 }
 
@@ -387,6 +409,7 @@ pub struct VerbInstance<H> {
     _pd: PhantomData<fn(H)>,
     verb: ErasedVerb<H>,
     arguments: Box<dyn std::any::Any>,
+    node: kdl::KdlNode,
 }
 
 impl<H: 'static> VerbInstance<H> {
@@ -403,6 +426,7 @@ impl<H: 'static> VerbInstance<H> {
             _pd: PhantomData,
             verb,
             arguments,
+            node: node.clone(),
         })
     }
 
@@ -411,8 +435,34 @@ impl<H: 'static> VerbInstance<H> {
     /// This returns an error if:
     /// - It returns an [`Err`]
     /// - It [`panic`]s
-    pub fn run(&self, harness: &mut H) -> Result<(), TestErrorCase> {
-        self.verb.run(harness, &*self.arguments)
+    pub fn run(&self, harness: &mut H) -> Result<(), TestError> {
+        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            self.verb.run(harness, &*self.arguments)
+        }));
+
+        match res {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(error)) => Err(TestError::Error {
+                error,
+                span: self.node.span(),
+            }),
+            Err(payload) => {
+                let mut message = "Something went wrong".to_string();
+
+                if let Some(msg) = payload.downcast_ref::<&str>() {
+                    message = msg.to_string();
+                }
+
+                if let Some(msg) = payload.downcast_ref::<String>() {
+                    message.clone_from(msg);
+                }
+
+                Err(TestError::Panic {
+                    error: miette::Report::msg(message),
+                    span: self.node.span(),
+                })
+            }
+        }
     }
 }
 

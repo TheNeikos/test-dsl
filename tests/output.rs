@@ -83,29 +83,23 @@ fn check_argument_wrong_type_verb() {
         }),
     );
 
-    let tc = ts
-        .parse_testcase(
-            r#"
+    let tc = ts.parse_testcase(
+        r#"
             testcase {
                 foobar
             }
         "#,
-        )
-        .unwrap()[0]
-        .run(&mut ());
+    );
 
     insta::assert_snapshot!(format!("{:?}", miette::Error::new(tc.unwrap_err())));
 
-    let tc = ts
-        .parse_testcase(
-            r#"
+    let tc = ts.parse_testcase(
+        r#"
             testcase {
                 foobar not_a_number
             }
         "#,
-        )
-        .unwrap()[0]
-        .run(&mut ());
+    );
 
     insta::assert_snapshot!(format!("{:?}", miette::Error::new(tc.unwrap_err())));
 }

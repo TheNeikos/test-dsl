@@ -22,7 +22,7 @@ pub trait TestCondition<H>: std::fmt::Debug + Clone + 'static {
     ///
     /// If the condition cannot properly support the concept of 'checking now' it is ok to simply
     /// return an error.
-    fn check_now(&self, harness: &H, arguments: &Self::Arguments) -> Result<bool, TestErrorCase>;
+    fn check_now(&self, harness: &H, arguments: &Self::Arguments) -> miette::Result<bool>;
 
     /// Wait until a given condition evaluates to a meaningful value
     ///
@@ -31,14 +31,14 @@ pub trait TestCondition<H>: std::fmt::Debug + Clone + 'static {
     ///
     /// If the condition cannot properly support the concept of 'waiting until it has a value', it
     /// is ok to simply return an error.
-    fn wait_until(&self, harness: &H, arguments: &Self::Arguments) -> Result<bool, TestErrorCase>;
+    fn wait_until(&self, harness: &H, arguments: &Self::Arguments) -> miette::Result<bool>;
 }
 
 pub(crate) struct ErasedCondition<H> {
     condition: Box<dyn Any>,
     fn_parse_args: fn(&crate::TestDsl<H>, &kdl::KdlNode) -> Result<Box<dyn Any>, TestErrorCase>,
-    fn_check_now: fn(&dyn Any, &H, &dyn Any) -> Result<bool, TestErrorCase>,
-    fn_wait_util: fn(&dyn Any, &H, &dyn Any) -> Result<bool, TestErrorCase>,
+    fn_check_now: fn(&dyn Any, &H, &dyn Any) -> miette::Result<bool>,
+    fn_wait_util: fn(&dyn Any, &H, &dyn Any) -> miette::Result<bool>,
     fn_clone: fn(&dyn Any) -> Box<dyn Any>,
 }
 
@@ -107,11 +107,7 @@ impl<H> ErasedCondition<H> {
         (self.fn_parse_args)(test_dsl, node)
     }
 
-    pub(crate) fn check_now(
-        &self,
-        harness: &H,
-        arguments: &dyn Any,
-    ) -> Result<bool, TestErrorCase> {
+    pub(crate) fn check_now(&self, harness: &H, arguments: &dyn Any) -> miette::Result<bool> {
         (self.fn_check_now)(&*self.condition, harness, arguments)
     }
 }
@@ -303,23 +299,25 @@ where
     T: ParseArguments<H>,
 {
     type Arguments = T;
-    fn check_now(&self, harness: &H, arguments: &T) -> Result<bool, TestErrorCase> {
+    fn check_now(&self, harness: &H, arguments: &T) -> miette::Result<bool> {
         let Some(check) = self.now.as_ref().map(|now| now.check(harness, arguments)) else {
             return Err(TestErrorCase::InvalidCondition {
                 error: miette::miette!("Condition does not implement checking now"),
-            });
+            }
+            .into());
         };
 
-        check.map_err(|error| TestErrorCase::Error { error })
+        check
     }
 
-    fn wait_until(&self, harness: &H, node: &T) -> Result<bool, TestErrorCase> {
+    fn wait_until(&self, harness: &H, node: &T) -> miette::Result<bool> {
         let Some(check) = self.wait.as_ref().map(|wait| wait.check(harness, node)) else {
             return Err(TestErrorCase::InvalidCondition {
                 error: miette::miette!("Condition does not implement checking now"),
-            });
+            }
+            .into());
         };
 
-        check.map_err(|error| TestErrorCase::Error { error })
+        check
     }
 }

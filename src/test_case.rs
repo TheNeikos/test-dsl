@@ -5,7 +5,7 @@ use thiserror::Error;
 
 use crate::TestCaseInput;
 use crate::VerbInstance;
-use crate::error::TestErrorCase;
+use crate::error::TestError;
 
 /// A singular test case
 pub struct TestCase<H> {
@@ -24,7 +24,7 @@ impl<H> std::fmt::Debug for TestCase<H> {
 /// An error occured while running a test
 pub struct TestCaseError {
     #[diagnostic_source]
-    pub(crate) error: TestErrorCase,
+    pub(crate) error: TestError,
 
     #[source_code]
     pub(crate) source_code: TestCaseInput,
