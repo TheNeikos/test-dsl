@@ -230,12 +230,6 @@ macro_rules! impl_callable {
 
 all_the_tuples!(impl_callable);
 
-/// Define a verb with a closure
-#[macro_export]
-macro_rules! function_verb {
-    () => {};
-}
-
 impl<T, H: 'static> Verb<H> for FunctionVerb<H, T>
 where
     T: ParseArguments<H>,

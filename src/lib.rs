@@ -61,7 +61,7 @@ impl<H: 'static> TestDsl<H> {
 
     /// Add a single verb
     ///
-    /// The name is used as-is in your testcases, the arguments are up to each individual [`TestVerb`] implementation.
+    /// The name is used as-is in your testcases, the arguments are up to each individual [`Verb`] implementation.
     ///
     /// See [`FunctionVerb`](verb::FunctionVerb) for an easy to use way of defining verbs.
     pub fn add_verb(&mut self, name: impl AsRef<str>, verb: impl Verb<H>) {
@@ -74,7 +74,7 @@ impl<H: 'static> TestDsl<H> {
     /// Add a single condition
     ///
     /// The name is used as-is in your testcases, the arguments are up to each individual
-    /// [`TestCondition`] implementation.
+    /// [`TestCondition`](condition::TestCondition) implementation.
     ///
     /// See [`Condition`](condition::Condition) for an easy to use way of defining conditions.
     pub fn add_condition(

@@ -23,6 +23,20 @@ macro_rules! all_the_tuples {
 /// Define a new type that implements [`ParseArguments`](crate::arguments::ParseArguments)
 ///
 /// This can then be used in your custom [`Verb`](crate::Verb) or [`TestCondition`](crate::condition::TestCondition) implementations.
+///
+/// **Note:** The definition uses `=` instead of the usual `:` to delimit fields and their types.
+/// This is on purpose, as this may later be expanded to allow for positional arguments as well.
+///
+/// ```
+/// use test_dsl::named_parameters;
+///
+/// named_parameters! {
+///     Frobnicator {
+///         foo = usize,
+///         name = String
+///     }
+/// }
+/// ```
 #[macro_export]
 macro_rules! named_parameters {
     ( $vis:vis $param_name:ident { $($key:ident = $value:ty),* $(,)? }) => {
@@ -47,8 +61,9 @@ macro_rules! named_parameters {
     };
 }
 
-/// Define a verb using a closure, where the argument names are used as the key names
 #[macro_export]
+#[cfg(not(doc))]
+#[expect(missing_docs, reason = "This is documented further below")]
 macro_rules! named_parameters_verb {
     (@define_args $struct_name:ident => { |$_name:ident : $_ty:ty $(, $name:ident : $kind:ty)* $(,)?| $rest:block }) => {
         #[derive(Debug, Clone)]
@@ -115,6 +130,26 @@ macro_rules! named_parameters_verb {
 
         verb
     }};
+}
+
+/// Define a verb using a closure, where the argument names are used as the key names
+///
+/// ```
+/// # use test_dsl::{TestDsl, named_parameters_verb};
+/// let mut dsl = TestDsl::<()>::new();
+///
+/// dsl.add_verb(
+///     "test",
+///     named_parameters_verb!(|_harness: &mut (), name: String, pi: usize| {
+///         println!("{name} = {pi}");
+///         Ok(())
+///     }),
+/// );
+/// ```
+#[cfg(doc)]
+#[macro_export]
+macro_rules! named_parameters_verb {
+    ($($input:tt)*) => {};
 }
 
 #[cfg(test)]
