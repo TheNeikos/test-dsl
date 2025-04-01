@@ -4,8 +4,8 @@ use std::any::Any;
 use std::marker::PhantomData;
 
 use crate::BoxedArguments;
-use crate::arguments::ParseArguments;
-use crate::arguments::VerbArgument;
+use crate::argument::ParseArguments;
+use crate::argument::VerbArgument;
 use crate::error::TestErrorCase;
 
 /// A condition check for a given property

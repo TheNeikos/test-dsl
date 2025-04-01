@@ -20,7 +20,7 @@ macro_rules! all_the_tuples {
     };
 }
 
-/// Define a new type that implements [`ParseArguments`](crate::arguments::ParseArguments)
+/// Define a new type that implements [`ParseArguments`](crate::argument::ParseArguments)
 ///
 /// This can then be used in your custom [`Verb`](crate::Verb) or [`TestCondition`](crate::condition::TestCondition) implementations.
 ///
@@ -45,10 +45,10 @@ macro_rules! named_parameters {
             $($key: $value),*
         }
 
-        impl<H> $crate::arguments::ParseArguments<H> for $param_name {
+        impl<H> $crate::argument::ParseArguments<H> for $param_name {
             fn parse(_: &$crate::TestDsl<H>, node: &$crate::kdl::KdlNode) -> Result<Self, $crate::error::TestErrorCase> {
                 $(
-                    let $key: $value = $crate::arguments::VerbArgument::from_value(node.entry(stringify!($key)).unwrap()).unwrap();
+                    let $key: $value = $crate::argument::VerbArgument::from_value(node.entry(stringify!($key)).unwrap()).unwrap();
                 )*
 
                 Ok($param_name {
@@ -80,7 +80,7 @@ macro_rules! named_parameters_verb {
 
     (@parse_args $node:ident => |$_name:ident : $_ty:ty $(, $name:ident : $kind:ty)* $(,)?| $rest:block) => {
         $(
-            let $name: $kind = $crate::arguments::VerbArgument::from_value($node.entry(stringify!($name)).unwrap()).unwrap();
+            let $name: $kind = $crate::argument::VerbArgument::from_value($node.entry(stringify!($name)).unwrap()).unwrap();
         )*
     };
 
@@ -119,7 +119,7 @@ macro_rules! named_parameters_verb {
 
         $crate::named_parameters_verb!(@define_args __NamedVerb => { $($input)* });
 
-        impl<H> $crate::arguments::ParseArguments<H> for __NamedVerb {
+        impl<H> $crate::argument::ParseArguments<H> for __NamedVerb {
             fn parse(_: &$crate::TestDsl<H>, node: &$crate::kdl::KdlNode) -> Result<Self, $crate::error::TestErrorCase> {
 
                 $crate::named_parameters_verb!(@parse_args node => $($input)*);
@@ -155,7 +155,7 @@ macro_rules! named_parameters_verb {
 #[cfg(test)]
 mod tests {
     use crate::TestDsl;
-    use crate::arguments::ParseArguments;
+    use crate::argument::ParseArguments;
 
     #[test]
     fn simple_kv() {

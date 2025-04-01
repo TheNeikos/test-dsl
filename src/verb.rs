@@ -8,8 +8,8 @@ use std::marker::PhantomData;
 
 use crate::BoxedArguments;
 use crate::TestDsl;
-use crate::arguments::ParseArguments;
-use crate::arguments::VerbArgument;
+use crate::argument::ParseArguments;
+use crate::argument::VerbArgument;
 use crate::error::TestErrorCase;
 
 /// A verb is anything that 'does' things in a [`TestCase`](crate::test_case::TestCase)

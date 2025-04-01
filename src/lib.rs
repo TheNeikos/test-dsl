@@ -4,9 +4,9 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use arguments::BoxedArguments;
-use arguments::ConditionChildren;
-use arguments::VerbChildren;
+use argument::BoxedArguments;
+use argument::ConditionChildren;
+use argument::VerbChildren;
 use condition::ErasedCondition;
 use error::TestError;
 use error::TestErrorCase;
@@ -16,7 +16,7 @@ use verb::Verb;
 #[macro_use]
 mod macros;
 
-pub mod arguments;
+pub mod argument;
 pub mod condition;
 pub mod error;
 pub mod test_case;
