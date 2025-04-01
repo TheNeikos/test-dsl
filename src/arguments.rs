@@ -6,12 +6,33 @@ use crate::error::TestErrorCase;
 /// Types that can be parsed from a node as arguments
 ///
 /// This includes both named/positional parameters as well as child nodes
-pub trait ParseArguments<H>: Sized + 'static {
+pub trait ParseArguments<H>: std::fmt::Debug + Clone + Sized + 'static {
     /// Do the parsing and return an instance
     ///
     /// See [`VerbInstance`](crate::VerbInstance) and
     /// [`ConditionInstance`](crate::ConditionInstance) for how to get an instance from a node.
     fn parse(test_dsl: &TestDsl<H>, node: &kdl::KdlNode) -> Result<Self, TestErrorCase>;
+}
+
+pub(crate) trait BoxedArguments<H>: std::fmt::Debug + std::any::Any {
+    fn clone_box(&self) -> Box<dyn BoxedArguments<H>>;
+    fn as_dyn_any(&self) -> &dyn std::any::Any;
+}
+
+impl<H: 'static> Clone for Box<dyn BoxedArguments<H>> {
+    fn clone(&self) -> Self {
+        (**self).clone_box()
+    }
+}
+
+impl<H, A: ParseArguments<H>> BoxedArguments<H> for A {
+    fn clone_box(&self) -> Box<dyn BoxedArguments<H>> {
+        Box::new(self.clone())
+    }
+
+    fn as_dyn_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }
 
 impl<H> ParseArguments<H> for ((),) {
@@ -27,8 +48,9 @@ macro_rules! impl_parse_arguments {
         #[allow(non_snake_case, unused_mut)]
         impl<H, $($ty,)* $last> ParseArguments<H> for ($($ty,)* $last,)
             where
-                $( $ty: VerbArgument + 'static, )*
+                $( $ty: VerbArgument + 'static , )*
                 $last: VerbArgument + 'static,
+                ($($ty,)* $last,): std::fmt::Debug,
         {
             fn parse(_test_dsl: &TestDsl<H>, node: &kdl::KdlNode) -> Result<Self, TestErrorCase> {
                 let mut args = node.iter();

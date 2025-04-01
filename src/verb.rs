@@ -6,6 +6,7 @@
 use std::any::Any;
 use std::marker::PhantomData;
 
+use crate::BoxedArguments;
 use crate::TestDsl;
 use crate::arguments::ParseArguments;
 use crate::arguments::VerbArgument;
@@ -22,9 +23,21 @@ pub trait Verb<H>: std::fmt::Debug + Clone + 'static {
 
 pub(crate) struct ErasedVerb<H> {
     verb: Box<dyn Any>,
-    fn_parse_args: fn(&crate::TestDsl<H>, &kdl::KdlNode) -> Result<Box<dyn Any>, TestErrorCase>,
+    fn_parse_args:
+        fn(&crate::TestDsl<H>, &kdl::KdlNode) -> Result<Box<dyn BoxedArguments<H>>, TestErrorCase>,
     fn_run: fn(&dyn Any, &mut H, &dyn Any) -> miette::Result<()>,
     fn_clone: fn(&dyn Any) -> Box<dyn Any>,
+}
+
+impl<H> std::fmt::Debug for ErasedVerb<H> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ErasedVerb")
+            .field("verb", &self.verb)
+            .field("fn_parse_args", &self.fn_parse_args)
+            .field("fn_run", &self.fn_run)
+            .field("fn_clone", &self.fn_clone)
+            .finish()
+    }
 }
 
 impl<H> Clone for ErasedVerb<H> {
@@ -69,7 +82,7 @@ impl<H> ErasedVerb<H> {
         &self,
         test_dsl: &TestDsl<H>,
         node: &kdl::KdlNode,
-    ) -> Result<Box<dyn Any>, TestErrorCase> {
+    ) -> Result<Box<dyn BoxedArguments<H>>, TestErrorCase> {
         (self.fn_parse_args)(test_dsl, node)
     }
 
@@ -172,6 +185,17 @@ impl<H, T> BoxedCallable<H, T> {
 pub trait CallableVerb<H, T>: Clone + 'static {
     /// Call the underlying closure
     fn call(&self, harness: &mut H, node: &T) -> miette::Result<()>;
+}
+
+impl<H, F, A> CallableVerb<H, ((), A)> for F
+where
+    F: Fn(&mut H, ((), A)) -> miette::Result<()>,
+    F: Clone + 'static,
+    A: ParseArguments<H>,
+{
+    fn call(&self, harness: &mut H, node: &((), A)) -> miette::Result<()> {
+        self(harness, node.clone())
+    }
 }
 
 impl<H, F> CallableVerb<H, ((),)> for F

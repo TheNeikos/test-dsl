@@ -93,6 +93,7 @@
 
             pkgs.cargo-insta
             pkgs.cargo-semver-checks
+            pkgs.cargo-expand
             inputs.cargo-changelog.packages.${system}.changelog
           ];
         };

@@ -3,6 +3,7 @@
 use std::any::Any;
 use std::marker::PhantomData;
 
+use crate::BoxedArguments;
 use crate::arguments::ParseArguments;
 use crate::arguments::VerbArgument;
 use crate::error::TestErrorCase;
@@ -36,7 +37,8 @@ pub trait TestCondition<H>: std::fmt::Debug + Clone + 'static {
 
 pub(crate) struct ErasedCondition<H> {
     condition: Box<dyn Any>,
-    fn_parse_args: fn(&crate::TestDsl<H>, &kdl::KdlNode) -> Result<Box<dyn Any>, TestErrorCase>,
+    fn_parse_args:
+        fn(&crate::TestDsl<H>, &kdl::KdlNode) -> Result<Box<dyn BoxedArguments<H>>, TestErrorCase>,
     fn_check_now: fn(&dyn Any, &H, &dyn Any) -> miette::Result<bool>,
     fn_wait_util: fn(&dyn Any, &H, &dyn Any) -> miette::Result<bool>,
     fn_clone: fn(&dyn Any) -> Box<dyn Any>,
@@ -103,7 +105,7 @@ impl<H> ErasedCondition<H> {
         &self,
         test_dsl: &crate::TestDsl<H>,
         node: &kdl::KdlNode,
-    ) -> Result<Box<dyn Any>, TestErrorCase> {
+    ) -> Result<Box<dyn BoxedArguments<H>>, TestErrorCase> {
         (self.fn_parse_args)(test_dsl, node)
     }
 

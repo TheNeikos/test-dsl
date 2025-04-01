@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
+use arguments::BoxedArguments;
 use arguments::ParseArguments;
 use condition::ErasedCondition;
 use error::TestError;
@@ -276,6 +277,24 @@ pub struct ConditionChildren<H, A> {
     children: Vec<ConditionInstance<H>>,
 }
 
+impl<H, A: std::fmt::Debug> std::fmt::Debug for ConditionChildren<H, A> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ConditionChildren")
+            .field("parameters", &self.parameters)
+            .field("children", &self.children)
+            .finish()
+    }
+}
+
+impl<H: 'static, A: Clone> Clone for ConditionChildren<H, A> {
+    fn clone(&self) -> Self {
+        Self {
+            parameters: self.parameters.clone(),
+            children: self.children.clone(),
+        }
+    }
+}
+
 impl<H, A> ConditionChildren<H, A> {
     /// Get the parameters
     pub fn parameters(&self) -> &A {
@@ -310,6 +329,24 @@ pub struct VerbChildren<H, A> {
     children: Vec<VerbInstance<H>>,
 }
 
+impl<H, A: std::fmt::Debug> std::fmt::Debug for VerbChildren<H, A> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("VerbChildren")
+            .field("parameters", &self.parameters)
+            .field("children", &self.children)
+            .finish()
+    }
+}
+
+impl<H: 'static, A: Clone> Clone for VerbChildren<H, A> {
+    fn clone(&self) -> Self {
+        Self {
+            parameters: self.parameters.clone(),
+            children: self.children.clone(),
+        }
+    }
+}
+
 impl<H, A> VerbChildren<H, A> {
     /// Get the parameters
     pub fn parameters(&self) -> &A {
@@ -342,8 +379,30 @@ impl<H: 'static, A: ParseArguments<H>> ParseArguments<H> for VerbChildren<H, A> 
 pub struct ConditionInstance<H> {
     _pd: PhantomData<fn(H)>,
     condition: ErasedCondition<H>,
-    arguments: Box<dyn std::any::Any>,
+    arguments: Box<dyn BoxedArguments<H>>,
     node: kdl::KdlNode,
+}
+
+impl<H: 'static> Clone for ConditionInstance<H> {
+    fn clone(&self) -> Self {
+        Self {
+            _pd: self._pd,
+            condition: self.condition.clone(),
+            arguments: self.arguments.clone(),
+            node: self.node.clone(),
+        }
+    }
+}
+
+impl<H> std::fmt::Debug for ConditionInstance<H> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ConditionInstance")
+            .field("_pd", &self._pd)
+            .field("condition", &self.condition)
+            .field("arguments", &self.arguments)
+            .field("node", &self.node)
+            .finish()
+    }
 }
 
 impl<H: 'static> ConditionInstance<H> {
@@ -372,7 +431,8 @@ impl<H: 'static> ConditionInstance<H> {
     /// - It [`panic`]s
     pub fn run(&self, harness: &mut H) -> Result<(), TestError> {
         let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            self.condition.check_now(harness, &*self.arguments)
+            self.condition
+                .check_now(harness, self.arguments.as_dyn_any())
         }));
 
         match res {
@@ -408,8 +468,30 @@ impl<H: 'static> ConditionInstance<H> {
 pub struct VerbInstance<H> {
     _pd: PhantomData<fn(H)>,
     verb: ErasedVerb<H>,
-    arguments: Box<dyn std::any::Any>,
+    arguments: Box<dyn BoxedArguments<H>>,
     node: kdl::KdlNode,
+}
+
+impl<H> std::fmt::Debug for VerbInstance<H> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("VerbInstance")
+            .field("_pd", &self._pd)
+            .field("verb", &self.verb)
+            .field("arguments", &self.arguments)
+            .field("node", &self.node)
+            .finish()
+    }
+}
+
+impl<H: 'static> Clone for VerbInstance<H> {
+    fn clone(&self) -> Self {
+        Self {
+            _pd: self._pd,
+            verb: self.verb.clone(),
+            arguments: self.arguments.clone(),
+            node: self.node.clone(),
+        }
+    }
 }
 
 impl<H: 'static> VerbInstance<H> {
@@ -437,7 +519,7 @@ impl<H: 'static> VerbInstance<H> {
     /// - It [`panic`]s
     pub fn run(&self, harness: &mut H) -> Result<(), TestError> {
         let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            self.verb.run(harness, &*self.arguments)
+            self.verb.run(harness, self.arguments.as_dyn_any())
         }));
 
         match res {
