@@ -6,11 +6,11 @@ expression: "format!(\"{:?}\", miette::Error::new(tc.unwrap_err()))"
 
 Error: 
   [31m×[0m An argument was missing
-   ╭─[[36;1;4mtest.kdl:3:17[0m]
- [2m2[0m │             testcase {
- [2m3[0m │                 repeat {
-   · [35;1m                ───┬──[0m
-   ·                    [35;1m╰── [35;1mThis node is missing an argument[0m[0m
- [2m4[0m │                 }
+   ╭─[3:17]
+ [2m2[0m │                 testcase {
+ [2m3[0m │ [35;1m╭[0m[35;1m─[0m[35;1m▶[0m                 repeat {
+ [2m4[0m │ [35;1m├[0m[35;1m─[0m[35;1m▶[0m                 }
+   · [35;1m╰[0m[35;1m───[0m[35;1m─[0m [35;1mThis node is missing an argument[0m
+ [2m5[0m │                 }
    ╰────
-[36m  help: [0m`repeat` takes one argument, the repetition count
+[36m  help: [0mThis verb takes 1 arguments, you're missing the 1th argument.

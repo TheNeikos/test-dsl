@@ -3,14 +3,22 @@ source: tests/output.rs
 expression: "format!(\"{:?}\", miette::Error::new(is_false.unwrap_err()))"
 ---
   [31m×[0m Testcase did not run successfully
-[31m  ├─▶ [0m  [31m×[0m An error occurred while running the test
-[31m  │   [0m    ╭─[[36;1;4mtest.kdl:10:21[0m]
-[31m  │   [0m [2m 9[0m │                 assert {
-[31m  │   [0m [2m10[0m │                     is_false
-[31m  │   [0m    · [35;1m                    ────┬───[0m
-[31m  │   [0m    ·                         [35;1m╰── [35;1min this node[0m[0m
-[31m  │   [0m [2m11[0m │                 }
+[31m  ├─▶ [0m  [31m×[0m An error occurred
+[31m  │   [0m    ╭─[9:17]
+[31m  │   [0m [2m 8[0m │                 testcase {
+[31m  │   [0m [2m 9[0m │ [35;1m╭[0m[35;1m─[0m[35;1m▶[0m                 assert {
+[31m  │   [0m [2m10[0m │ [35;1m│[0m                       is_false
+[31m  │   [0m [2m11[0m │ [35;1m├[0m[35;1m─[0m[35;1m▶[0m                 }
+[31m  │   [0m    · [35;1m╰[0m[35;1m───[0m[35;1m─[0m [35;1min this node[0m
+[31m  │   [0m [2m12[0m │                 }
 [31m  │   [0m    ╰────
 [31m  │   [0m
-[31m  ╰─▶ [0m  [31m×[0m Assert failed
+[31m  ╰─▶ [0m  [31m×[0m The given condition failed
+[31m      [0m    ╭─[10:21]
+[31m      [0m [2m 9[0m │                 assert {
+[31m      [0m [2m10[0m │                     is_false
+[31m      [0m    · [35;1m                    ────┬───[0m
+[31m      [0m    ·                         [35;1m╰── [35;1min this node[0m[0m
+[31m      [0m [2m11[0m │                 }
+[31m      [0m    ╰────
 [31m      [0m

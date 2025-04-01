@@ -51,10 +51,8 @@ ts.add_verb(
 );
 
 let testcases = ts
-    .parse_document(NamedSource::new(
-        "test.kdl",
-        Arc::from(
-            r#"
+    .parse_testcase(
+        r#"
         testcase {
             add 21
             mul 2
@@ -71,8 +69,7 @@ let testcases = ts
             }
         }
     "#,
-        ),
-    ))
+    )
     .unwrap();
 
 // Check that its true

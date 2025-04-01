@@ -6,7 +6,7 @@ expression: "format!(\"{:?}\", miette::Error::new(tc.unwrap_err()))"
 
 Error: 
   [31m×[0m Could not find verb with this name
-   ╭─[[36;1;4mtest.kdl:4:21[0m]
+   ╭─[4:21]
  [2m3[0m │                 repeat 2 {
  [2m4[0m │                     not_found
    · [35;1m                    ─────────[0m

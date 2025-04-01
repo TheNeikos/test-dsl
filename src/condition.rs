@@ -3,6 +3,7 @@
 use std::any::Any;
 use std::marker::PhantomData;
 
+use crate::arguments::ParseArguments;
 use crate::arguments::VerbArgument;
 use crate::error::TestErrorCase;
 
@@ -10,7 +11,10 @@ use crate::error::TestErrorCase;
 ///
 /// Conditions allow to check for anything you would find useful. For example, in a HTTP library,
 /// you can check that your cache contains a valid entry from a previous request.
-pub trait TestCondition<H>: 'static {
+pub trait TestCondition<H>: std::fmt::Debug + Clone + 'static {
+    /// The arguments for this condition
+    type Arguments: ParseArguments<H>;
+
     /// Run the check now, may or may not actually be implemented
     ///
     /// This is only useful for non-transient properties. For example "is this connected". It is
@@ -18,7 +22,7 @@ pub trait TestCondition<H>: 'static {
     ///
     /// If the condition cannot properly support the concept of 'checking now' it is ok to simply
     /// return an error.
-    fn check_now(&self, harness: &H, node: &kdl::KdlNode) -> Result<bool, TestErrorCase>;
+    fn check_now(&self, harness: &H, arguments: &Self::Arguments) -> miette::Result<bool>;
 
     /// Wait until a given condition evaluates to a meaningful value
     ///
@@ -27,16 +31,84 @@ pub trait TestCondition<H>: 'static {
     ///
     /// If the condition cannot properly support the concept of 'waiting until it has a value', it
     /// is ok to simply return an error.
-    fn wait_until(&self, harness: &H, node: &kdl::KdlNode) -> Result<bool, TestErrorCase>;
-
-    /// Clone the condition
-    fn clone_box(&self) -> Box<dyn TestCondition<H>>;
+    fn wait_until(&self, harness: &H, arguments: &Self::Arguments) -> miette::Result<bool>;
 }
 
-impl<H: 'static> Clone for Box<dyn TestCondition<H>> {
+pub(crate) struct ErasedCondition<H> {
+    condition: Box<dyn Any>,
+    fn_parse_args: fn(&crate::TestDsl<H>, &kdl::KdlNode) -> Result<Box<dyn Any>, TestErrorCase>,
+    fn_check_now: fn(&dyn Any, &H, &dyn Any) -> miette::Result<bool>,
+    fn_wait_util: fn(&dyn Any, &H, &dyn Any) -> miette::Result<bool>,
+    fn_clone: fn(&dyn Any) -> Box<dyn Any>,
+}
+
+impl<H> std::fmt::Debug for ErasedCondition<H> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ErasedCondition")
+            .field("condition", &self.condition)
+            .field("fn_parse_args", &self.fn_parse_args)
+            .field("fn_check_now", &self.fn_check_now)
+            .field("fn_wait_util", &self.fn_wait_util)
+            .field("fn_clone", &self.fn_clone)
+            .finish()
+    }
+}
+
+impl<H> Clone for ErasedCondition<H> {
     fn clone(&self) -> Self {
-        let this: &dyn TestCondition<H> = &**self;
-        this.clone_box()
+        Self {
+            condition: (self.fn_clone)(&*self.condition),
+            fn_parse_args: self.fn_parse_args,
+            fn_check_now: self.fn_check_now,
+            fn_wait_util: self.fn_wait_util,
+            fn_clone: self.fn_clone,
+        }
+    }
+}
+
+impl<H> ErasedCondition<H> {
+    pub(crate) fn erase<C>(condition: C) -> Self
+    where
+        C: TestCondition<H>,
+    {
+        ErasedCondition {
+            condition: Box::new(condition),
+            fn_parse_args: |test_dsl, node| {
+                <C::Arguments as ParseArguments<H>>::parse(test_dsl, node).map(|a| {
+                    let args = Box::new(a);
+                    args as _
+                })
+            },
+            fn_check_now: |this, harness, arguments| {
+                let this: &C = this.downcast_ref().unwrap();
+                let arguments: &C::Arguments = arguments.downcast_ref().unwrap();
+
+                this.check_now(harness, arguments)
+            },
+            fn_wait_util: |this, harness, arguments| {
+                let this: &C = this.downcast_ref().unwrap();
+                let arguments: &C::Arguments = arguments.downcast_ref().unwrap();
+
+                this.wait_until(harness, arguments)
+            },
+            fn_clone: |this| {
+                let this: &C = this.downcast_ref().unwrap();
+
+                Box::new(this.clone())
+            },
+        }
+    }
+
+    pub(crate) fn parse_args(
+        &self,
+        test_dsl: &crate::TestDsl<H>,
+        node: &kdl::KdlNode,
+    ) -> Result<Box<dyn Any>, TestErrorCase> {
+        (self.fn_parse_args)(test_dsl, node)
+    }
+
+    pub(crate) fn check_now(&self, harness: &H, arguments: &dyn Any) -> miette::Result<bool> {
+        (self.fn_check_now)(&*self.condition, harness, arguments)
     }
 }
 
@@ -47,17 +119,27 @@ impl<H: 'static> Clone for Box<dyn TestCondition<H>> {
 /// It is implemented for closures of up to 16 arguments and their
 pub trait Checker<H, T>: Clone + 'static {
     /// Execute the check with the given node
-    fn check(&self, harness: &H, node: &kdl::KdlNode) -> Result<bool, TestErrorCase>;
+    fn check(&self, harness: &H, arguments: &T) -> miette::Result<bool>;
 }
 
-struct BoxedChecker<H> {
+struct BoxedChecker<H, T> {
     checker: Box<dyn Any>,
-    check_fn: fn(&dyn Any, harness: &H, node: &kdl::KdlNode) -> Result<bool, TestErrorCase>,
+    check_fn: fn(&dyn Any, harness: &H, node: &T) -> miette::Result<bool>,
     clone_fn: fn(&dyn Any) -> Box<dyn Any>,
 }
 
-impl<H> BoxedChecker<H> {
-    fn new<C, T>(checker: C) -> Self
+impl<H, T> std::fmt::Debug for BoxedChecker<H, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BoxedChecker")
+            .field("checker", &self.checker)
+            .field("check_fn", &self.check_fn)
+            .field("clone_fn", &self.clone_fn)
+            .finish()
+    }
+}
+
+impl<H, T> BoxedChecker<H, T> {
+    fn new<C>(checker: C) -> Self
     where
         C: Checker<H, T>,
     {
@@ -76,12 +158,12 @@ impl<H> BoxedChecker<H> {
         }
     }
 
-    fn check(&self, harness: &H, node: &kdl::KdlNode) -> Result<bool, TestErrorCase> {
+    fn check(&self, harness: &H, node: &T) -> miette::Result<bool> {
         (self.check_fn)(&*self.checker, harness, node)
     }
 }
 
-impl<H> Clone for BoxedChecker<H> {
+impl<H, T> Clone for BoxedChecker<H, T> {
     fn clone(&self) -> Self {
         BoxedChecker {
             checker: (self.clone_fn)(&*self.checker),
@@ -95,17 +177,27 @@ impl<H> Clone for BoxedChecker<H> {
 ///
 /// Depending on how it is constructed, it may or may not be able to be used in direct or waiting
 /// contexts
-pub struct Condition<H> {
-    now: Option<BoxedChecker<H>>,
-    wait: Option<BoxedChecker<H>>,
+pub struct Condition<H, T> {
+    now: Option<BoxedChecker<H, T>>,
+    wait: Option<BoxedChecker<H, T>>,
     _pd: PhantomData<fn(H)>,
 }
 
-impl<H> Condition<H> {
+impl<H, T> std::fmt::Debug for Condition<H, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Condition")
+            .field("now", &self.now)
+            .field("wait", &self.wait)
+            .field("_pd", &self._pd)
+            .finish()
+    }
+}
+
+impl<H, T> Condition<H, T> {
     /// Create a new [`Condition`] that can be called in direct contexts
     ///
     /// For example the `assert` verb allows you to verify multiple [`TestCondition`]s (of which [`Condition`] is one way to create one).
-    pub fn new_now<C, T>(now: C) -> Self
+    pub fn new_now<C>(now: C) -> Self
     where
         C: Checker<H, T>,
     {
@@ -117,7 +209,7 @@ impl<H> Condition<H> {
     }
 
     /// Create a new [`Condition`] that can be called in waiting contexts
-    pub fn new_wait<C, T>(wait: C) -> Self
+    pub fn new_wait<C>(wait: C) -> Self
     where
         C: Checker<H, T>,
     {
@@ -129,7 +221,7 @@ impl<H> Condition<H> {
     }
 
     /// Create a new [`Condition`] that can be called in both direct and waiting contexts
-    pub fn new_now_and_wait<C, T>(both: C) -> Self
+    pub fn new_now_and_wait<C>(both: C) -> Self
     where
         C: Checker<H, T>,
     {
@@ -141,7 +233,7 @@ impl<H> Condition<H> {
     }
 
     /// Allow this condition to also be used in direct contexts
-    pub fn with_now<C, T>(mut self, now: C) -> Self
+    pub fn with_now<C>(mut self, now: C) -> Self
     where
         C: Checker<H, T>,
     {
@@ -150,7 +242,7 @@ impl<H> Condition<H> {
     }
 
     /// Allow this condition to also be used in waiting contexts
-    pub fn with_wait<C, T>(mut self, wait: C) -> Self
+    pub fn with_wait<C>(mut self, wait: C) -> Self
     where
         C: Checker<H, T>,
     {
@@ -159,7 +251,7 @@ impl<H> Condition<H> {
     }
 }
 
-impl<H> Clone for Condition<H> {
+impl<H, T> Clone for Condition<H, T> {
     fn clone(&self) -> Self {
         Condition {
             now: self.now.clone(),
@@ -174,34 +266,9 @@ where
     F: Fn(&H) -> miette::Result<bool>,
     F: Clone + 'static,
 {
-    fn check(&self, harness: &H, node: &kdl::KdlNode) -> Result<bool, TestErrorCase> {
-        self(harness).map_err(|error| TestErrorCase::Error {
-            error,
-            label: node.span(),
-        })
+    fn check(&self, harness: &H, _arguments: &((),)) -> miette::Result<bool> {
+        self(harness)
     }
-}
-
-#[rustfmt::skip]
-macro_rules! all_the_tuples {
-    ($name:ident) => {
-        $name!([], T1);
-        $name!([T1], T2);
-        $name!([T1, T2], T3);
-        $name!([T1, T2, T3], T4);
-        $name!([T1, T2, T3, T4], T5);
-        $name!([T1, T2, T3, T4, T5], T6);
-        $name!([T1, T2, T3, T4, T5, T6], T7);
-        $name!([T1, T2, T3, T4, T5, T6, T7], T8);
-        $name!([T1, T2, T3, T4, T5, T6, T7, T8], T9);
-        $name!([T1, T2, T3, T4, T5, T6, T7, T8, T9], T10);
-        $name!([T1, T2, T3, T4, T5, T6, T7, T8, T9, T10], T11);
-        $name!([T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11], T12);
-        $name!([T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12], T13);
-        $name!([T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13], T14);
-        $name!([T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14], T15);
-        $name!([T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11, T12, T13, T14, T15], T16);
-    };
 }
 
 macro_rules! impl_callable {
@@ -216,57 +283,9 @@ macro_rules! impl_callable {
                 $( $ty: VerbArgument, )*
                 $last: VerbArgument,
         {
-            fn check(&self, harness: &H, node: &kdl::KdlNode) -> Result<bool, TestErrorCase> {
-                let mut args = node.iter();
-
-                let total_count = 1
-                    $(
-                        + {
-                            const _: () = {
-                                #[allow(unused)]
-                                let $ty = ();
-                            };
-                            1
-                        }
-
-                    )*;
-
-                let mut running_count = 1;
-
-                $(
-                    let arg = args.next().ok_or_else(|| TestErrorCase::MissingArgument {
-                        parent: node.span(),
-                        missing: format!("This condition takes {} arguments, you're missing the {}th argument.", total_count, running_count),
-                    })?;
-
-                    let $ty = <$ty as VerbArgument>::from_value(arg).ok_or_else(|| {
-                        TestErrorCase::WrongArgumentType {
-                            parent: node.name().span(),
-                            argument: arg.span(),
-                            expected: format!("This condition takes a '{}' as its argument here.", <$ty as VerbArgument>::TYPE_NAME),
-                        }
-                    })?;
-                    running_count += 1;
-                )*
-
-                let _ = running_count;
-
-                let arg = args.next().ok_or_else(|| TestErrorCase::MissingArgument {
-                    parent: node.span(),
-                    missing: format!("This condition takes {tc} arguments, you're missing the {tc}th argument.", tc = total_count),
-                })?;
-                let $last = <$last as VerbArgument>::from_value(arg).ok_or_else(|| {
-                    TestErrorCase::WrongArgumentType {
-                        parent: node.name().span(),
-                        argument: arg.span(),
-                        expected: format!("This condition takes a '{}' as its argument here.", <$last as VerbArgument>::TYPE_NAME),
-                    }
-                })?;
-
-                self(harness, $($ty,)* $last,).map_err(|error| TestErrorCase::Error {
-                    error,
-                    label: node.span()
-                })
+            fn check(&self, harness: &H, node: &($($ty,)* $last,)) -> miette::Result<bool> {
+                let ($($ty,)* $last,) = node.clone();
+                self(harness, $($ty,)* $last,)
             }
         }
     };
@@ -274,33 +293,31 @@ macro_rules! impl_callable {
 
 all_the_tuples!(impl_callable);
 
-impl<H> TestCondition<H> for Condition<H>
+impl<H, T> TestCondition<H> for Condition<H, T>
 where
     H: 'static,
+    T: ParseArguments<H>,
 {
-    fn check_now(&self, harness: &H, node: &kdl::KdlNode) -> Result<bool, TestErrorCase> {
-        let Some(check) = self.now.as_ref().map(|now| now.check(harness, node)) else {
-            return Err(TestErrorCase::Error {
+    type Arguments = T;
+    fn check_now(&self, harness: &H, arguments: &T) -> miette::Result<bool> {
+        let Some(check) = self.now.as_ref().map(|now| now.check(harness, arguments)) else {
+            return Err(TestErrorCase::InvalidCondition {
                 error: miette::miette!("Condition does not implement checking now"),
-                label: node.span(),
-            });
+            }
+            .into());
         };
 
         check
     }
 
-    fn wait_until(&self, harness: &H, node: &kdl::KdlNode) -> Result<bool, TestErrorCase> {
+    fn wait_until(&self, harness: &H, node: &T) -> miette::Result<bool> {
         let Some(check) = self.wait.as_ref().map(|wait| wait.check(harness, node)) else {
-            return Err(TestErrorCase::Error {
-                error: miette::miette!("Condition does not implement waiting"),
-                label: node.span(),
-            });
+            return Err(TestErrorCase::InvalidCondition {
+                error: miette::miette!("Condition does not implement checking now"),
+            }
+            .into());
         };
 
         check
-    }
-
-    fn clone_box(&self) -> Box<dyn TestCondition<H>> {
-        Box::new(self.clone())
     }
 }
