@@ -147,7 +147,7 @@ The following verbs come builtin:
   [`FunctionVerb`](crate::verb::FunctionVerb) for quick in-line verb
   definitions. [`FunctionVerb`](crate::verb::FunctionVerb) accepts closures
   which take your harness as well as arguments for your verb.
-- Closely behind are the [`TestCondition`](crate::condition::TestCondition)s.
+- Closely behind are the [`Condition`](crate::condition::Condition)s.
   They allow for verifying your invariants. Similarly to verbs, you can
   implement the trait yourself, or use the
   [`FunctionCondition`](crate::condition::FunctionCondition) helper.

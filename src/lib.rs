@@ -75,13 +75,13 @@ impl<H: 'static> TestDsl<H> {
     /// Add a single condition
     ///
     /// The name is used as-is in your testcases, the arguments are up to each individual
-    /// [`TestCondition`](condition::TestCondition) implementation.
+    /// [`Condition`](condition::Condition) implementation.
     ///
     /// See [`FunctionCondition`](condition::FunctionCondition) for an easy to use way of defining conditions.
     pub fn add_condition(
         &mut self,
         name: impl AsRef<str>,
-        condition: impl condition::TestCondition<H>,
+        condition: impl condition::Condition<H>,
     ) {
         let existing = self
             .conditions
@@ -272,7 +272,7 @@ impl<H: 'static> Verb<H> for Repeat {
     }
 }
 
-/// An instance of a [`TestCondition`](condition::TestCondition)
+/// An instance of a [`Condition`](condition::Condition)
 pub struct ConditionInstance<H> {
     _pd: PhantomData<fn(H)>,
     condition: ErasedCondition<H>,

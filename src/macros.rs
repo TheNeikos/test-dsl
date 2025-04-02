@@ -22,7 +22,7 @@ macro_rules! all_the_tuples {
 
 /// Define a new type that implements [`ParseArguments`](crate::argument::ParseArguments)
 ///
-/// This can then be used in your custom [`Verb`](crate::Verb) or [`TestCondition`](crate::condition::TestCondition) implementations.
+/// This can then be used in your custom [`Verb`](crate::Verb) or [`Condition`](crate::condition::Condition) implementations.
 ///
 /// **Note:** The definition uses `=` instead of the usual `:` to delimit fields and their types.
 /// This is on purpose, as this may later be expanded to allow for positional arguments as well.

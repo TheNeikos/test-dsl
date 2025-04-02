@@ -12,7 +12,7 @@ use crate::error::TestErrorCase;
 ///
 /// Conditions allow to check for anything you would find useful. For example, in a HTTP library,
 /// you can check that your cache contains a valid entry from a previous request.
-pub trait TestCondition<H>: std::fmt::Debug + Clone + 'static {
+pub trait Condition<H>: std::fmt::Debug + Clone + 'static {
     /// The arguments for this condition
     type Arguments: ParseArguments<H>;
 
@@ -71,7 +71,7 @@ impl<H> Clone for ErasedCondition<H> {
 impl<H> ErasedCondition<H> {
     pub(crate) fn erase<C>(condition: C) -> Self
     where
-        C: TestCondition<H>,
+        C: Condition<H>,
     {
         ErasedCondition {
             condition: Box::new(condition),
@@ -198,7 +198,7 @@ impl<H, T> std::fmt::Debug for FunctionCondition<H, T> {
 impl<H, T> FunctionCondition<H, T> {
     /// Create a new [`FunctionCondition`] that can be called in direct contexts
     ///
-    /// For example the `assert` verb allows you to verify multiple [`TestCondition`]s (of which [`FunctionCondition`] is one way to create one).
+    /// For example the `assert` verb allows you to verify multiple [`Condition`]s (of which [`FunctionCondition`] is one way to create one).
     pub fn new_now<C>(now: C) -> Self
     where
         C: Checker<H, T>,
@@ -295,7 +295,7 @@ macro_rules! impl_callable {
 
 all_the_tuples!(impl_callable);
 
-impl<H, T> TestCondition<H> for FunctionCondition<H, T>
+impl<H, T> Condition<H> for FunctionCondition<H, T>
 where
     H: 'static,
     T: ParseArguments<H>,
