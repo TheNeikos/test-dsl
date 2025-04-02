@@ -41,16 +41,16 @@ For example, a fairly simple test-setup to check arithmetic can be defined as fo
 
 ```rust
 use std::sync::Arc;
-use test_dsl::condition::Condition;
+use test_dsl::condition::FunctionCondition;
 use test_dsl::verb::FunctionVerb;
 use miette::NamedSource;
 
 let mut ts = test_dsl::TestDsl::<usize>::new();
 
-ts.add_condition("is_fortytwo", Condition::new_now(|h: &usize| Ok(*h == 42)));
+ts.add_condition("is_fortytwo", FunctionCondition::new_now(|h: &usize| Ok(*h == 42)));
 ts.add_condition(
     "is_equal",
-    Condition::new_now(|h: &usize, num: usize| Ok(*h == num)),
+    FunctionCondition::new_now(|h: &usize, num: usize| Ok(*h == num)),
 );
 
 ts.add_verb(
@@ -150,7 +150,7 @@ The following verbs come builtin:
 - Closely behind are the [`TestCondition`](crate::condition::TestCondition)s.
   They allow for verifying your invariants. Similarly to verbs, you can
   implement the trait yourself, or use the
-  [`Condition`](crate::condition::Condition) helper.
+  [`FunctionCondition`](crate::condition::FunctionCondition) helper.
 - [`ParseArguments`](crate::argument::ParseArguments) is the bridge between
   `kdl` and `test_dsl`. It allows verbs and conditions to accept input in form
   of arguments and child nodes, and put it into a form that the

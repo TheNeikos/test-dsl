@@ -77,7 +77,7 @@ impl<H: 'static> TestDsl<H> {
     /// The name is used as-is in your testcases, the arguments are up to each individual
     /// [`TestCondition`](condition::TestCondition) implementation.
     ///
-    /// See [`Condition`](condition::Condition) for an easy to use way of defining conditions.
+    /// See [`FunctionCondition`](condition::FunctionCondition) for an easy to use way of defining conditions.
     pub fn add_condition(
         &mut self,
         name: impl AsRef<str>,
