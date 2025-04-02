@@ -1,6 +1,6 @@
 //! Test various error outputs
 
-use test_dsl::condition::Condition;
+use test_dsl::condition::FunctionCondition;
 use test_dsl::verb::FunctionVerb;
 
 #[test]
@@ -130,8 +130,8 @@ fn check_verb_panic_fail() {
 fn check_conditions() {
     let mut ts = test_dsl::TestDsl::<()>::new();
 
-    ts.add_condition("is_true", Condition::new_now(|_h: &()| Ok(true)));
-    ts.add_condition("is_false", Condition::new_now(|_h: &()| Ok(false)));
+    ts.add_condition("is_true", FunctionCondition::new_now(|_h: &()| Ok(true)));
+    ts.add_condition("is_false", FunctionCondition::new_now(|_h: &()| Ok(false)));
 
     let testcases = ts
         .parse_testcase(
@@ -163,10 +163,13 @@ fn check_conditions() {
 fn check_arithmetic() {
     let mut ts = test_dsl::TestDsl::<usize>::new();
 
-    ts.add_condition("is_fortytwo", Condition::new_now(|h: &usize| Ok(*h == 42)));
+    ts.add_condition(
+        "is_fortytwo",
+        FunctionCondition::new_now(|h: &usize| Ok(*h == 42)),
+    );
     ts.add_condition(
         "is_equal",
-        Condition::new_now(|h: &usize, num: usize| Ok(*h == num)),
+        FunctionCondition::new_now(|h: &usize, num: usize| Ok(*h == num)),
     );
 
     ts.add_verb(

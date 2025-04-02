@@ -12,7 +12,7 @@ use crate::error::TestErrorCase;
 ///
 /// Conditions allow to check for anything you would find useful. For example, in a HTTP library,
 /// you can check that your cache contains a valid entry from a previous request.
-pub trait TestCondition<H>: std::fmt::Debug + Clone + 'static {
+pub trait Condition<H>: std::fmt::Debug + Clone + 'static {
     /// The arguments for this condition
     type Arguments: ParseArguments<H>;
 
@@ -71,7 +71,7 @@ impl<H> Clone for ErasedCondition<H> {
 impl<H> ErasedCondition<H> {
     pub(crate) fn erase<C>(condition: C) -> Self
     where
-        C: TestCondition<H>,
+        C: Condition<H>,
     {
         ErasedCondition {
             condition: Box::new(condition),
@@ -116,7 +116,7 @@ impl<H> ErasedCondition<H> {
 
 /// A [`Checker`] is the actual instance that executes when a condition evaluates.
 ///
-/// It is mostly used with the [`Condition`] struct when given a closure/function.
+/// It is mostly used with the [`FunctionCondition`] struct when given a closure/function.
 ///
 /// It is implemented for closures of up to 16 arguments
 pub trait Checker<H, T>: Clone + 'static {
@@ -179,15 +179,15 @@ impl<H, T> Clone for BoxedChecker<H, T> {
 ///
 /// Depending on how it is constructed, it may or may not be able to be used in direct or waiting
 /// contexts
-pub struct Condition<H, T> {
+pub struct FunctionCondition<H, T> {
     now: Option<BoxedChecker<H, T>>,
     wait: Option<BoxedChecker<H, T>>,
     _pd: PhantomData<fn(H)>,
 }
 
-impl<H, T> std::fmt::Debug for Condition<H, T> {
+impl<H, T> std::fmt::Debug for FunctionCondition<H, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Condition")
+        f.debug_struct("FunctionCondition")
             .field("now", &self.now)
             .field("wait", &self.wait)
             .field("_pd", &self._pd)
@@ -195,39 +195,39 @@ impl<H, T> std::fmt::Debug for Condition<H, T> {
     }
 }
 
-impl<H, T> Condition<H, T> {
-    /// Create a new [`Condition`] that can be called in direct contexts
+impl<H, T> FunctionCondition<H, T> {
+    /// Create a new [`FunctionCondition`] that can be called in direct contexts
     ///
-    /// For example the `assert` verb allows you to verify multiple [`TestCondition`]s (of which [`Condition`] is one way to create one).
+    /// For example the `assert` verb allows you to verify multiple [`Condition`]s (of which [`FunctionCondition`] is one way to create one).
     pub fn new_now<C>(now: C) -> Self
     where
         C: Checker<H, T>,
     {
-        Condition {
+        FunctionCondition {
             now: Some(BoxedChecker::new(now)),
             wait: None,
             _pd: PhantomData,
         }
     }
 
-    /// Create a new [`Condition`] that can be called in waiting contexts
+    /// Create a new [`FunctionCondition`] that can be called in waiting contexts
     pub fn new_wait<C>(wait: C) -> Self
     where
         C: Checker<H, T>,
     {
-        Condition {
+        FunctionCondition {
             now: None,
             wait: Some(BoxedChecker::new(wait)),
             _pd: PhantomData,
         }
     }
 
-    /// Create a new [`Condition`] that can be called in both direct and waiting contexts
+    /// Create a new [`FunctionCondition`] that can be called in both direct and waiting contexts
     pub fn new_now_and_wait<C>(both: C) -> Self
     where
         C: Checker<H, T>,
     {
-        Condition {
+        FunctionCondition {
             now: Some(BoxedChecker::new(both.clone())),
             wait: Some(BoxedChecker::new(both)),
             _pd: PhantomData,
@@ -253,9 +253,9 @@ impl<H, T> Condition<H, T> {
     }
 }
 
-impl<H, T> Clone for Condition<H, T> {
+impl<H, T> Clone for FunctionCondition<H, T> {
     fn clone(&self) -> Self {
-        Condition {
+        FunctionCondition {
             now: self.now.clone(),
             wait: self.wait.clone(),
             _pd: PhantomData,
@@ -295,7 +295,7 @@ macro_rules! impl_callable {
 
 all_the_tuples!(impl_callable);
 
-impl<H, T> TestCondition<H> for Condition<H, T>
+impl<H, T> Condition<H> for FunctionCondition<H, T>
 where
     H: 'static,
     T: ParseArguments<H>,
@@ -304,7 +304,7 @@ where
     fn check_now(&self, harness: &H, arguments: &T) -> miette::Result<bool> {
         let Some(check) = self.now.as_ref().map(|now| now.check(harness, arguments)) else {
             return Err(TestErrorCase::InvalidCondition {
-                error: miette::miette!("Condition does not implement checking now"),
+                error: miette::miette!("FunctionCondition does not implement checking now"),
             }
             .into());
         };
@@ -315,7 +315,7 @@ where
     fn wait_until(&self, harness: &H, node: &T) -> miette::Result<bool> {
         let Some(check) = self.wait.as_ref().map(|wait| wait.check(harness, node)) else {
             return Err(TestErrorCase::InvalidCondition {
-                error: miette::miette!("Condition does not implement checking now"),
+                error: miette::miette!("FunctionCondition does not implement checking now"),
             }
             .into());
         };
