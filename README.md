@@ -1,4 +1,4 @@
-# test-dsl is a test-helper library to write your own DSLs
+# test-dsl is a test-helper library to write your own DSLs for testing
 
 [![Crates.io Version](https://img.shields.io/crates/v/test-dsl)](https://crates.io/crates/test-dsl)
 [![docs.rs (with version)](https://img.shields.io/docsrs/test-dsl/latest)](https://docs.rs/test-dsl)
@@ -9,6 +9,25 @@ cargo add --dev test-dsl
 
 `test-dsl` allows you define a set of verbs and conditions, to more easily
 concentrate on authoring tests.
+
+Instead of copy-pasting boilerplate and creating hard-to-read tests, this crate
+allows you to distill the behaviour of your library or application into small
+actions called 'verbs'.
+
+An example test for an imaginary "http client" crate could look like this:
+
+```kdl
+testcase {
+    create_mock_server "example.com"
+    create_client "sut"
+    connect client="sut" server="example.com"
+
+    assert {
+        check_last_connection status=200
+        verify_cache client="sut" url="example.com"
+    }
+}
+```
 
 ## How to use it
 
