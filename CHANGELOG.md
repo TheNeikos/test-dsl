@@ -8,7 +8,7 @@
 
 #### Allow more kinds of inputs rather just NamedSource
 
-####(#1) Add getter for test case source
+#### (#1) Add getter for test case source
 
 #### Refactor internals to allow for more flexible usage
 
