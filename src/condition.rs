@@ -1,4 +1,4 @@
-//! Foobar
+//! Conditions allow to tests for invariants or expected actions
 
 use std::any::Any;
 use std::marker::PhantomData;
@@ -118,7 +118,7 @@ impl<H> ErasedCondition<H> {
 ///
 /// It is mostly used with the [`Condition`] struct when given a closure/function.
 ///
-/// It is implemented for closures of up to 16 arguments and their
+/// It is implemented for closures of up to 16 arguments
 pub trait Checker<H, T>: Clone + 'static {
     /// Execute the check with the given node
     fn check(&self, harness: &H, arguments: &T) -> miette::Result<bool>;
