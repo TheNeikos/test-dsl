@@ -131,3 +131,31 @@ The following verbs come builtin:
         }
     }
     ```
+## How the different types relate to eachother
+
+- The main type is [`TestDsl`](crate::TestDsl) which serves as the coordinator.
+  Ideally you should have a single function creating this object that you can
+  reuse.
+  Each [`TestDsl`](crate::TestDsl) is generic over your test **Harness**. Which
+  is basically the 'coordinator' of your test. Think of it like an all-seeing
+  part of your system, that can kick-start functionalities you'd want to test.
+  It's usually best if your harness only interacts with the to-be-tested types
+  through their public functions. But depending on how you organize your code
+  it might also be able to access the inner workings.
+- The work-horses 🐴 of this crate are the [`Verb`](crate::verb::Verb)
+  implementations. You can implement it yourself, or you can use
+  [`FunctionVerb`](crate::verb::FunctionVerb) for quick in-line verb
+  definitions. [`FunctionVerb`](crate::verb::FunctionVerb) accepts closures
+  which take your harness as well as arguments for your verb.
+- Closely behind are the [`TestCondition`](crate::condition::TestCondition)s.
+  They allow for verifying your invariants. Similarly to verbs, you can
+  implement the trait yourself, or use the
+  [`Condition`](crate::condition::Condition) helper.
+- [`ParseArguments`](crate::argument::ParseArguments) is the bridge between
+  `kdl` and `test_dsl`. It allows verbs and conditions to accept input in form
+  of arguments and child nodes, and put it into a form that the
+  verbs/conditions can then make use of.
+- [`VerbInstance`](crate::VerbInstance) &
+  [`ConditionInstance`](crate::ConditionInstance) are both fully-parsed and
+  ready to run verbs & conditions. They are created from `TestDsl` instances.
+  Mainly used in `ParseArguments` implementations.
