@@ -65,66 +65,53 @@ macro_rules! named_parameters {
 #[cfg(not(doc))]
 #[expect(missing_docs, reason = "This is documented further below")]
 macro_rules! named_parameters_verb {
-    (@define_args $struct_name:ident => { |$_name:ident : $_ty:ty $(, $name:ident : $kind:ty)* $(,)?| $rest:block }) => {
-        #[derive(Debug, Clone)]
-        struct $struct_name {
-            $($name : $kind),*
-        }
-    };
-
-    (@get_args $struct_name:ident => |$_name:ident : $_ty:ty $(, $name:ident : $kind:ty)* $(,)?| $rest:block) => {
-        $struct_name {
-            $($name),*
-        }
-    };
-
-    (@parse_args $node:ident => |$_name:ident : $_ty:ty $(, $name:ident : $kind:ty)* $(,)?| $rest:block) => {
-        $(
-            let $name: $kind = $crate::argument::VerbArgument::from_value($node.entry(stringify!($name)).unwrap()).unwrap();
-        )*
-    };
-
-    (@extract $node:ident => |$_name:ident : $_ty:ty $(, $name:ident : $kind:ty)* $(,)?| $rest:block) => {
-        $(
-            let $name: $kind = $node.$name.clone();
-        )*
-    };
-
-    (@verb_params $verb:ident $harness:ident => |$_name:ident : $_ty:ty $(, $name:ident : $kind:ty)* $(,)?| $rest:block) => {
-        $verb($harness, $($name),*)
-    };
-
-    (@call $struct_name:ident => { $($rest:tt)* } => { |$_name:ident : &mut $ty:ty $(,$_:ident : $__:ty)*| $_rest:block }) => {{
-        #[derive(Clone)]
-        struct __Caller;
-
-        impl $crate::verb::CallableVerb<$ty, $struct_name> for __Caller {
-            fn call(&self, harness: &mut $ty, node: &$struct_name) -> $crate::miette::Result<()> {
-
-                let verb = $($rest)*;
-
-                $crate::named_parameters_verb!(@extract node => $($rest)*);
-
-                $crate::named_parameters_verb!(@verb_params verb harness => $($rest)*)
-            }
-        }
-
-        __Caller
-    }};
-
     ($($input:tt)*) => {{
-        let verb = $crate::verb::FunctionVerb::<_, __NamedVerb>::new(
-            $crate::named_parameters_verb!(@call __NamedVerb => { $($input)* } => { $($input)* })
-        );
+        $crate::__inner_named_parameters_verb!(@impl { $($input)* })
+    }};
+}
 
-        $crate::named_parameters_verb!(@define_args __NamedVerb => { $($input)* });
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __inner_named_parameters_verb {
+    (@impl { |$name:ident : &mut $ty:ty $(, $param_name:ident : $param_type:ty)* $(,)?| $rest:block }) => {{
+        #[derive(Debug, Clone)]
+        struct __NamedVerb {
+            $($param_name : $param_type),*
+        }
+
+        let verb = $crate::verb::FunctionVerb::<_, __NamedVerb>::new({
+            #[derive(Clone)]
+            struct __Caller;
+
+            impl $crate::verb::CallableVerb<$ty, __NamedVerb> for __Caller {
+                fn call(&self, harness: &mut $ty, node: &__NamedVerb) -> $crate::miette::Result<()> {
+
+                    let verb = |$name : &mut $ty $(, $param_name : $param_type)*,| {
+                        $rest
+                    };
+
+                    $(
+                        let $param_name: $param_type = node.$param_name.clone();
+                    )*
+
+                    verb(harness, $($param_name),*)
+                }
+            }
+
+            __Caller
+        });
 
         impl<H> $crate::argument::ParseArguments<H> for __NamedVerb {
             fn parse(_: &$crate::TestDsl<H>, node: &$crate::kdl::KdlNode) -> Result<Self, $crate::error::TestErrorCase> {
+                $(
+                    let $param_name: $param_type = $crate::argument::VerbArgument::from_value(node.entry(stringify!($param_name)).unwrap()).unwrap();
+                )*
 
-                $crate::named_parameters_verb!(@parse_args node => $($input)*);
-
-                Ok($crate::named_parameters_verb!(@get_args __NamedVerb => $($input)*))
+                Ok({
+                    __NamedVerb {
+                        $($param_name),*
+                    }
+                })
             }
         }
 
@@ -184,6 +171,37 @@ mod tests {
                 println!("{name} = {pi}");
                 Ok(())
             }),
+        );
+
+        dsl.add_verb(
+            "test_many",
+            named_parameters_verb!(|_harness: &mut (),
+                                    _name: String,
+                                    _pi: usize,
+                                    _pi1: usize,
+                                    _pi2: usize,
+                                    _pi3: usize,
+                                    _pi4: usize,
+                                    _pi5: usize,
+                                    _pi6: usize,
+                                    _pi7: usize,
+                                    _pi8: usize,
+                                    _pi9: usize,
+                                    _pi10: usize,
+                                    _pi11: usize,
+                                    _pi12: usize,
+                                    _pi13: usize,
+                                    _pi14: usize,
+                                    _pi15: usize,
+                                    _pi16: usize,
+                                    _pi17: usize,
+                                    _pi18: usize,
+                                    _pi19: usize,
+                                    _pi20: usize,
+                                    _pi21: usize,
+                                    _pi22: usize,
+                                    _pi23: usize,
+                                    _pi24: usize| { Ok(()) }),
         );
     }
 }
