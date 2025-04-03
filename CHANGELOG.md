@@ -2,6 +2,17 @@
 
 <!-- generated from cargo-changelog -->
 
+## v0.4.0
+
+### "Bugfix"
+
+#### Fix infinite macro expansion bug with unexpected token inputs
+
+See 937217f665c6bba8d597e099a5640fac2a8036ea for an explanation
+### "Misc"
+
+#### Renamed Condition-related types to make more sense
+
 ## v0.3.0
 
 ### "Feature"
